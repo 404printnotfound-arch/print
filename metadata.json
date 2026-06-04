@@ -1,0 +1,6 @@
+{
+  "name": "PRINT 404",
+  "description": "High-fidelity mobile-first print kiosk web application. Price: ₹3 per page. Fast uploads, in-app cropping, and quick checkout.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
