@@ -266,7 +266,7 @@ export default function App() {
       'Feeding premium photo-grade raw paper stack...',
       'A4 Sheet passed toner roller 1. Injecting precision ink arrays...',
       'Running double-sided duplex flipper apparatus...',
-      'Fusing monochrome pigment at 185°C. Ejecting page into slot below...',
+      'Fusing black & white print at 185°C. Ejecting page into slot below...',
       'Print cycle complete. Validating status sensors...'
     ];
 
@@ -336,7 +336,7 @@ export default function App() {
 
           <div className="text-right">
             <div className="text-sm font-bold text-yellow-400 font-mono">₹{pricePerPage} / Print</div>
-            <div className="text-[10px] text-zinc-400 font-sans">A4 Monochrome Only</div>
+            <div className="text-[10px] text-zinc-400 font-sans">A4 Black & White Prints</div>
           </div>
         </header>
 
@@ -415,9 +415,9 @@ export default function App() {
                   {/* Single Paper Prices */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-zinc-900 border border-zinc-850 p-3.5 rounded-xl text-center space-y-1">
-                      <span className="text-zinc-500 text-[10px] font-mono uppercase tracking-wider block">Monochrome</span>
+                      <span className="text-zinc-500 text-[10px] font-mono uppercase tracking-wider block">Black & White</span>
                       <p className="text-lg font-bold text-white font-sans">₹3.00 / pg</p>
-                      <span className="text-[10px] text-zinc-400 block font-sans">High Contrast Pigment</span>
+                      <span className="text-[10px] text-zinc-400 block font-sans">Black & White Prints</span>
                     </div>
                     <div className="bg-zinc-900 border border-zinc-850 p-3.5 rounded-xl text-center space-y-1">
                       <span className="text-zinc-500 text-[10px] font-mono uppercase tracking-wider block">Paper Stock</span>
