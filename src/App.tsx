@@ -92,6 +92,21 @@ export default function App() {
     if (userPhone) localStorage.setItem('p404_userPhone', userPhone);
   }, [userPhone]);
 
+  // Prevent background scroll when the Crop modal overlay is active
+  useEffect(() => {
+    if (showCropModal) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+    };
+  }, [showCropModal]);
+
   // Handle file input selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {

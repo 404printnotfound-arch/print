@@ -163,7 +163,8 @@ export default function ImageCropper({ imageUrl, onCropComplete, onUseOriginal, 
       {/* Interactive Crop Viewport area */}
       <div 
         ref={containerRef}
-        className="relative flex-1 bg-zinc-950 flex items-center justify-center p-4 overflow-hidden min-h-[300px]"
+        className="relative flex-1 bg-zinc-950 flex items-center justify-center p-4 overflow-hidden min-h-[250px] select-none"
+        style={{ touchAction: 'none' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -226,7 +227,10 @@ export default function ImageCropper({ imageUrl, onCropComplete, onUseOriginal, 
       </div>
 
       {/* Control Widgets Panel with scroll protection for very raw/short mobile screens */}
-      <div className="bg-zinc-900 p-4 border-t border-zinc-800 space-y-4 text-white overflow-y-auto max-h-[46vh] sm:max-h-none">
+      <div 
+        className="bg-zinc-900 p-4 border-t border-zinc-800 space-y-3.5 text-white overflow-y-auto max-h-[46vh] sm:max-h-none overscroll-contain"
+        style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
+      >
         
         {/* Helper quick actions: FIT WHOLE IMAGE or FILL PAGE */}
         <div className="space-y-1.5">
