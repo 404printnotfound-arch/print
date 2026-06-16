@@ -137,7 +137,11 @@ export default function App() {
 
     const checkHealth = async () => {
       try {
-        const response = await fetch(`${PI_URL}/api/health`);
+        const response = await fetch(`${PI_URL}/api/health`, {
+          headers: {
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
         if (response.ok) {
           setIsMachineOnline(true);
         } else {
@@ -348,6 +352,9 @@ export default function App() {
       // 3. POST request to ${PI_URL}/api/upload
       const uploadRes = await fetch(`${PI_URL}/api/upload`, {
         method: 'POST',
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        },
         body: formData,
       });
 
@@ -385,6 +392,7 @@ export default function App() {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
               },
               body: JSON.stringify({
                 jobId: jobId,
