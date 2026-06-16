@@ -32,19 +32,11 @@ import ImageCropper from './components/ImageCropper';
 import Confetti from './components/Confetti';
 
 // ==========================================
-// CONFIGURATION CONSTANTS (Paste your values here)
+// CONFIGURATION CONSTANTS
 // ==========================================
-const MY_PASTED_PI_URL = "";       // <-- [PASTE YOUR Raspberry Pi NGROK URL HERE] (e.g. "https://xxxx.ngrok-free.app")
-const MY_PASTED_RAZORPAY_KEY = ""; // <-- [PASTE YOUR RAZORPAY KEY HERE] (e.g. "rzp_test_xxxxxx")
+const PI_URL = "https://crouton-liquid-undivided.ngrok-free.dev";
+const RAZORPAY_KEY = "rzp_test_T2C6JRotNyrJVN";
 // ==========================================
-
-const PI_URL = MY_PASTED_PI_URL || 
-  (import.meta as any).env.VITE_PI_SERVER_URL || 
-  '';
-
-const RAZORPAY_KEY = MY_PASTED_RAZORPAY_KEY || 
-  (import.meta as any).env.VITE_RAZORPAY_KEY_ID || 
-  '';
 
 // Ensure process.env is defined for the browser and maps seamlessly to Vite environment
 if (typeof (window as any).process === 'undefined') {
@@ -136,7 +128,7 @@ export default function App() {
     };
   }, []);
 
-  // Real-time Health Check to Raspberry Pi every 10 seconds
+  // Real-time Health Check to Raspberry Pi every 15 seconds
   useEffect(() => {
     if (!PI_URL) {
       setIsMachineOnline(true);
@@ -159,7 +151,7 @@ export default function App() {
     // Run health check initially
     checkHealth();
 
-    const interval = setInterval(checkHealth, 10000);
+    const interval = setInterval(checkHealth, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -376,10 +368,10 @@ export default function App() {
       // 4. Open Razorpay Checkout Window
       const options = {
         key: RAZORPAY_KEY,
-        amount: amount,
+        amount: amount * 100, // Converts [Amount from Pi] to paise as specified
         currency: 'INR',
         name: 'PRINT 404 Kiosk',
-        description: `Job ID: ${jobId}`,
+        description: 'Print Job: ' + jobId,
         image: 'https://ais-pre-topbswiopeu3lodqo2vguu-136008080948.asia-southeast1.run.app/assets/logo.png',
         handler: async function (response: any) {
           const paymentId = response.razorpay_payment_id;
@@ -1032,51 +1024,26 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* simulated instant checkout */}
-                  <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-850 space-y-3.5 text-center" id="upi-options-drawer">
-                    <p className="text-xs text-zinc-300 font-sans">Simulating Secure UPI QR Code handshake...</p>
-                    
-                    <div className="bg-white p-3 inline-block rounded-xl mx-auto shadow-md">
-                      {/* Beautiful generated retro print-qr */}
-                      <div className="w-28 h-28 bg-zinc-100 flex flex-col justify-center items-center border border-zinc-200 relative">
-                        <div className="absolute inset-2 grid grid-cols-5 grid-rows-5 gap-1.5 p-1">
-                          <div className="bg-black"></div>
-                          <div className="bg-black"></div>
-                          <div></div>
-                          <div className="bg-black"></div>
-                          <div className="bg-black"></div>
-                          <div className="bg-black"></div>
-                          <div></div>
-                          <div className="bg-black"></div>
-                          <div></div>
-                          <div className="bg-black"></div>
-                          <div></div>
-                          <div className="bg-black"></div>
-                          <div></div>
-                          <div className="bg-black"></div>
-                          <div></div>
-                          <div className="bg-black"></div>
-                          <div></div>
-                          <div className="bg-black"></div>
-                          <div></div>
-                          <div className="bg-black"></div>
-                          <div className="bg-black"></div>
-                          <div className="bg-black"></div>
-                          <div></div>
-                          <div className="bg-black"></div>
-                          <div className="bg-black"></div>
-                        </div>
-                        {/* Mini logo inside */}
-                        <div className="w-6 h-6 bg-yellow-400 text-black font-black font-mono text-[9px] rounded-sm flex items-center justify-center z-10 border border-white">
-                          404
-                        </div>
+                  {/* Processing upload state or ready to pay */}
+                  {paymentProcessing ? (
+                    <div className="p-6 bg-zinc-900 rounded-2xl border border-zinc-850 space-y-4 text-center flex flex-col items-center justify-center min-h-[180px]" id="upload-processing-box">
+                      <Loader2 className="w-10 h-10 animate-spin text-yellow-400 stroke-[2.5]" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold font-sans text-white">Processing...</p>
+                        <p className="text-xs text-zinc-400 font-sans">{paymentStatusText || 'Transferring print payload...'}</p>
                       </div>
                     </div>
-
-                    <div className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider">
-                      Scan with GPay, PhonePe, Paytm, or BHIM
+                  ) : (
+                    <div className="p-6 bg-zinc-900 rounded-2xl border border-zinc-850 space-y-3.5 text-center flex flex-col items-center justify-center min-h-[180px]" id="payment-ready-box">
+                      <CreditCard className="w-8 h-8 text-yellow-400 animate-pulse" />
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold font-mono text-zinc-500 uppercase tracking-widest block">Ready for Payment</p>
+                        <p className="text-xs text-zinc-300 font-sans max-w-[240px] mx-auto leading-relaxed font-sans">
+                          Click <b>Pay & Print</b> below to initialize the secure Razorpay Checkout overlay in your browser.
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="space-y-3.5 pt-4">
