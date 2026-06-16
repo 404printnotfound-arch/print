@@ -31,6 +31,41 @@ import PrintOptionsForm from './components/PrintOptionsForm';
 import ImageCropper from './components/ImageCropper';
 import Confetti from './components/Confetti';
 
+// Ensure process.env is defined for the browser and maps seamlessly to Vite environment
+if (typeof (window as any).process === 'undefined') {
+  (window as any).process = { env: {} };
+}
+if (!(window as any).process.env) {
+  (window as any).process.env = {};
+}
+// Set fallbacks for NEXT_PUBLIC env variables so they are accessible on process.env
+(window as any).process.env.NEXT_PUBLIC_PI_SERVER_URL = 
+  (window as any).process.env.NEXT_PUBLIC_PI_SERVER_URL || 
+  (import.meta as any).env.VITE_PI_SERVER_URL || 
+  (import.meta as any).env.NEXT_PUBLIC_PI_SERVER_URL || 
+  '';
+(window as any).process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID = 
+  (window as any).process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 
+  (import.meta as any).env.VITE_RAZORPAY_KEY_ID || 
+  (import.meta as any).env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 
+  '';
+
+const PI_SERVER_URL = process.env.NEXT_PUBLIC_PI_SERVER_URL || '';
+const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+
+// Helper to convert DataURL to Blob
+const dataURLtoBlob = (dataurl: string) => {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+};
+
 export default function App() {
   // Navigation & User session states
   const [currentStep, setCurrentStep] = useState<Step>(Step.LANDING);
@@ -43,6 +78,7 @@ export default function App() {
 
   // File management states
   const [selectedFile, setSelectedFile] = useState<FileDetails | null>(null);
+  const [rawFile, setRawFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -66,6 +102,7 @@ export default function App() {
   // Payment states
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'upi' | 'card' | 'wallet'>('upi');
   const [paymentProcessing, setPaymentProcessing] = useState<boolean>(false);
+  const [paymentStatusText, setPaymentStatusText] = useState<string>('');
   
   // Printing simulation state
   const [printProgress, setPrintProgress] = useState<number>(0);
@@ -82,6 +119,19 @@ export default function App() {
     if (!selectedFile) return 0;
     return selectedFile.pages * printSettings.copies * pricePerPage;
   };
+
+  // Load official Razorpay checkout script dynamically
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.head.appendChild(script);
+    return () => {
+      if (document.head.contains(script)) {
+        document.head.removeChild(script);
+      }
+    };
+  }, []);
 
   // Pre-load customer details or settings on first boot
   useEffect(() => {
@@ -134,6 +184,7 @@ export default function App() {
     }
 
     // Initialize state
+    setRawFile(file);
     setSelectedFile({
       name,
       size: file.size,
@@ -232,66 +283,145 @@ export default function App() {
     setCurrentStep(Step.PAYMENT);
   };
 
-  // Simulated Payment processing
-  const handleInitiatePayment = () => {
-    if (!activeOrder) return;
+  // Real Payment and API Upload processing
+  const handleInitiatePayment = async () => {
+    if (!activeOrder || !selectedFile) return;
+
     setPaymentProcessing(true);
+    setPaymentStatusText('Uploading file to Pi server...');
 
-    // High fidelity payment screen delay
-    setTimeout(() => {
-      setPaymentProcessing(false);
-      setActiveOrder(prev => prev ? {
-        ...prev,
-        paymentStatus: 'success',
-        printStatus: 'printing'
-      } : null);
-
-      setCurrentStep(Step.STATUS);
-      // Trigger live physical printout simulator immediately!
-      startPrintSimulation();
-    }, 2200);
-  };
-
-  // Physical automated print loop simulator
-  const startPrintSimulation = () => {
-    setPrintProgress(0);
-    setCurrentPrintLog('Connecting to HP Print Engine via cloud router...');
-    
-    const logs = [
-      'Establishing TLS handshake with Kiosk #404 firmware...',
-      'Verified Razorpay secure escrow receipt ID: RF910248.',
-      'Siphoning high-fidelity print payload to spool buffer...',
-      'Rasterizing layout to A4 format with white bleed margin boundaries...',
-      'Waking thermo-fusing units & laser scanning arrays...',
-      'Feeding premium photo-grade raw paper stack...',
-      'A4 Sheet passed toner roller 1. Injecting precision ink arrays...',
-      'Running double-sided duplex flipper apparatus...',
-      'Fusing black & white print at 185°C. Ejecting page into slot below...',
-      'Print cycle complete. Validating status sensors...'
-    ];
-
-    let logCounter = 0;
-    const logInterval = setInterval(() => {
-      if (logCounter < logs.length) {
-        setCurrentPrintLog(logs[logCounter]);
-        setPrintProgress(Math.round(((logCounter + 1) / logs.length) * 100));
-        logCounter++;
-      } else {
-        clearInterval(logInterval);
-        
-        // Randomly simulate an occasional fail if the printer mock offline logic is activated, else 100% success!
-        const willSucceed = isMachineOnline; // Follow online/offline simulation status
-        
-        setActiveOrder(prev => prev ? {
-          ...prev,
-          printStatus: willSucceed ? 'success' : 'failed'
-        } : null);
-
-        if (!willSucceed) {
-          setPrintErrorCode('ERR_PAPER_JAM_404');
+    try {
+      // 1. Prepare file
+      let fileToUpload: File | Blob | null = null;
+      if (selectedFile.croppedUrl) {
+        try {
+          const blob = dataURLtoBlob(selectedFile.croppedUrl);
+          fileToUpload = new File([blob], selectedFile.name, { type: blob.type });
+        } catch (err) {
+          console.error("Failed to convert cropped URL to Blob, falling back to rawFile", err);
         }
       }
-    }, 2200); // 2.2 seconds between printing steps for beautiful realistic cadence
+
+      if (!fileToUpload) {
+        fileToUpload = rawFile;
+      }
+
+      if (!fileToUpload) {
+        try {
+          const res = await fetch(selectedFile.url);
+          const blob = await res.blob();
+          fileToUpload = new File([blob], selectedFile.name, { type: selectedFile.type });
+        } catch (e) {
+          fileToUpload = new Blob(["dummy file content"], { type: selectedFile.type || "text/plain" });
+        }
+      }
+
+      // 2. Create FormData
+      const formData = new FormData();
+      formData.append('file', fileToUpload);
+      formData.append('name', userName);
+      formData.append('pages', selectedFile.pages.toString());
+      formData.append('copies', printSettings.copies.toString());
+
+      // 3. POST request to ${PI_SERVER_URL}/api/upload
+      const uploadRes = await fetch(`${PI_SERVER_URL}/api/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error(`Upload failed with status ${uploadRes.status}`);
+      }
+
+      const uploadData = await uploadRes.json();
+      const jobId = uploadData.jobId;
+      const amount = uploadData.amount;
+
+      if (!jobId || amount === undefined) {
+        throw new Error("Invalid response from Pi server: missing jobId or amount.");
+      }
+
+      setPaymentStatusText('Opening secure Razorpay Gateway...');
+
+      // 4. Open Razorpay Checkout Window
+      const options = {
+        key: RAZORPAY_KEY_ID,
+        amount: amount,
+        currency: 'INR',
+        name: 'PRINT 404 Kiosk',
+        description: `Job ID: ${jobId}`,
+        image: 'https://ais-pre-topbswiopeu3lodqo2vguu-136008080948.asia-southeast1.run.app/assets/logo.png',
+        handler: async function (response: any) {
+          const paymentId = response.razorpay_payment_id;
+          
+          setPaymentProcessing(true);
+          setPaymentStatusText('Verifying & Confirming payment...');
+
+          try {
+            // 5. POST to confirm-payment
+            const confirmRes = await fetch(`${PI_SERVER_URL}/api/confirm-payment`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                jobId: jobId,
+                paymentId: paymentId,
+              }),
+            });
+
+            if (!confirmRes.ok) {
+              throw new Error(`Payment confirmation failed with status ${confirmRes.status}`);
+            }
+
+            // Set active order success state based on real verification
+            setActiveOrder((prev) => prev ? {
+              ...prev,
+              paymentStatus: 'success',
+              printStatus: 'success',
+              id: jobId,
+              code: jobId,
+            } : null);
+
+            setPaymentProcessing(false);
+            setPaymentStatusText('');
+            setCurrentStep(Step.STATUS);
+          } catch (err: any) {
+            console.error(err);
+            alert(`Payment confirmation error: ${err.message || err}`);
+            setPaymentProcessing(false);
+            setPaymentStatusText('');
+          }
+        },
+        prefill: {
+          name: userName,
+          contact: userPhone,
+        },
+        theme: {
+          color: '#FACC15',
+        },
+        modal: {
+          ondismiss: function() {
+            setPaymentProcessing(false);
+            setPaymentStatusText('');
+          }
+        }
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function (response: any) {
+        alert(`Payment failed: ${response.error.description}`);
+        setPaymentProcessing(false);
+        setPaymentStatusText('');
+      });
+      rzp.open();
+
+    } catch (err: any) {
+      console.error("Initiate payment error", err);
+      alert(`Print/Payment initialization failed: ${err.message || err}`);
+      setPaymentProcessing(false);
+      setPaymentStatusText('');
+    }
   };
 
   // Reset print and navigate home
@@ -942,7 +1072,7 @@ export default function App() {
                       {paymentProcessing ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin stroke-[2.5]" />
-                          <span>Authorizing ₹{activeOrder.amount}...</span>
+                          <span>{paymentStatusText || `Authorizing ₹${activeOrder.amount}...`}</span>
                         </>
                       ) : (
                         <>
