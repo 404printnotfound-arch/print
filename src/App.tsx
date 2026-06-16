@@ -31,6 +31,21 @@ import PrintOptionsForm from './components/PrintOptionsForm';
 import ImageCropper from './components/ImageCropper';
 import Confetti from './components/Confetti';
 
+// ==========================================
+// CONFIGURATION CONSTANTS (Paste your values here)
+// ==========================================
+const MY_PASTED_PI_URL = "";       // <-- [PASTE YOUR Raspberry Pi NGROK URL HERE] (e.g. "https://xxxx.ngrok-free.app")
+const MY_PASTED_RAZORPAY_KEY = ""; // <-- [PASTE YOUR RAZORPAY KEY HERE] (e.g. "rzp_test_xxxxxx")
+// ==========================================
+
+const PI_URL = MY_PASTED_PI_URL || 
+  (import.meta as any).env.VITE_PI_SERVER_URL || 
+  '';
+
+const RAZORPAY_KEY = MY_PASTED_RAZORPAY_KEY || 
+  (import.meta as any).env.VITE_RAZORPAY_KEY_ID || 
+  '';
+
 // Ensure process.env is defined for the browser and maps seamlessly to Vite environment
 if (typeof (window as any).process === 'undefined') {
   (window as any).process = { env: {} };
@@ -38,20 +53,8 @@ if (typeof (window as any).process === 'undefined') {
 if (!(window as any).process.env) {
   (window as any).process.env = {};
 }
-// Set fallbacks for NEXT_PUBLIC env variables so they are accessible on process.env
-(window as any).process.env.NEXT_PUBLIC_PI_SERVER_URL = 
-  (window as any).process.env.NEXT_PUBLIC_PI_SERVER_URL || 
-  (import.meta as any).env.VITE_PI_SERVER_URL || 
-  (import.meta as any).env.NEXT_PUBLIC_PI_SERVER_URL || 
-  '';
-(window as any).process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID = 
-  (window as any).process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 
-  (import.meta as any).env.VITE_RAZORPAY_KEY_ID || 
-  (import.meta as any).env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 
-  '';
-
-const PI_SERVER_URL = process.env.NEXT_PUBLIC_PI_SERVER_URL || '';
-const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+(window as any).process.env.NEXT_PUBLIC_PI_SERVER_URL = PI_URL;
+(window as any).process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID = RAZORPAY_KEY;
 
 // Helper to convert DataURL to Blob
 const dataURLtoBlob = (dataurl: string) => {
@@ -131,6 +134,33 @@ export default function App() {
         document.head.removeChild(script);
       }
     };
+  }, []);
+
+  // Real-time Health Check to Raspberry Pi every 10 seconds
+  useEffect(() => {
+    if (!PI_URL) {
+      setIsMachineOnline(true);
+      return;
+    }
+
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${PI_URL}/api/health`);
+        if (response.ok) {
+          setIsMachineOnline(true);
+        } else {
+          setIsMachineOnline(false);
+        }
+      } catch (err) {
+        setIsMachineOnline(false);
+      }
+    };
+
+    // Run health check initially
+    checkHealth();
+
+    const interval = setInterval(checkHealth, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   // Pre-load customer details or settings on first boot
@@ -323,8 +353,8 @@ export default function App() {
       formData.append('pages', selectedFile.pages.toString());
       formData.append('copies', printSettings.copies.toString());
 
-      // 3. POST request to ${PI_SERVER_URL}/api/upload
-      const uploadRes = await fetch(`${PI_SERVER_URL}/api/upload`, {
+      // 3. POST request to ${PI_URL}/api/upload
+      const uploadRes = await fetch(`${PI_URL}/api/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -345,7 +375,7 @@ export default function App() {
 
       // 4. Open Razorpay Checkout Window
       const options = {
-        key: RAZORPAY_KEY_ID,
+        key: RAZORPAY_KEY,
         amount: amount,
         currency: 'INR',
         name: 'PRINT 404 Kiosk',
@@ -358,8 +388,8 @@ export default function App() {
           setPaymentStatusText('Verifying & Confirming payment...');
 
           try {
-            // 5. POST to confirm-payment
-            const confirmRes = await fetch(`${PI_SERVER_URL}/api/confirm-payment`, {
+            // 5. POST to confirm-payment with the jobId
+            const confirmRes = await fetch(`${PI_URL}/api/confirm-payment`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -519,7 +549,6 @@ export default function App() {
                   {/* Status Indicator */}
                   <StatusIndicator 
                     isOnline={isMachineOnline} 
-                    onSimulateStatus={(status) => setIsMachineOnline(status)} 
                   />
 
                   {/* High Fidelity Banner Visual */}

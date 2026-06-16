@@ -3,34 +3,29 @@ import { Wifi, WifiOff, Clock } from 'lucide-react';
 
 interface StatusIndicatorProps {
   isOnline: boolean;
-  onSimulateStatus: (status: boolean) => void;
 }
 
-export default function StatusIndicator({ isOnline, onSimulateStatus }: StatusIndicatorProps) {
+export default function StatusIndicator({ isOnline }: StatusIndicatorProps) {
   const [checking, setChecking] = useState<boolean>(false);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
 
   useEffect(() => {
-    // Simulate auto-refreshes every 30 seconds
+    setLastChecked(new Date());
+  }, [isOnline]);
+
+  useEffect(() => {
+    // Show ping effect periodically
     const interval = setInterval(() => {
       setChecking(true);
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         setChecking(false);
         setLastChecked(new Date());
-      }, 1200);
-    }, 30000);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, []);
-
-  const triggerManualCheck = () => {
-    if (checking) return;
-    setChecking(true);
-    setTimeout(() => {
-      setChecking(false);
-      setLastChecked(new Date());
-    }, 1000);
-  };
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-md space-y-3" id="printer-status">
@@ -82,15 +77,6 @@ export default function StatusIndicator({ isOnline, onSimulateStatus }: StatusIn
             {checking ? 'Pinging Raspberry Pi...' : `Updated: ${lastChecked.toLocaleTimeString()}`}
           </span>
         </div>
-        
-        {/* Toggle Simulation Mode (Super-helpful for testing the demo) */}
-        <button 
-          onClick={() => onSimulateStatus(!isOnline)} 
-          className="text-xs text-yellow-400/80 hover:text-yellow-400 font-semibold underline underline-offset-2 transition active:scale-95"
-          id="toggle-simulator-btn"
-        >
-          {isOnline ? 'Simulate Offline' : 'Simulate Online'}
-        </button>
       </div>
     </div>
   );
