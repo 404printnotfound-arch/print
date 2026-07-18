@@ -95,37 +95,7 @@ export default function PrintOptionsForm({
           </div>
         </div>
 
-        {/* Option 2: Orientation Toggle */}
-        <div className="space-y-2 border-b border-zinc-50 pb-4" id="setting-orientation">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-zinc-800 font-sans">Orientation</span>
-            <span className="text-xs text-zinc-400 capitalize font-mono">{settings.orientation} Mode</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => onUpdateSettings({ orientation: 'portrait' })}
-              className={`py-2 px-3 rounded-xl text-xs font-semibold font-sans border-2 transition ${
-                settings.orientation === 'portrait'
-                  ? 'border-zinc-900 bg-zinc-90 w-full text-zinc-900'
-                  : 'border-zinc-100 bg-zinc-50 text-zinc-500 hover:bg-zinc-100'
-              }`}
-            >
-              Portrait
-            </button>
-            <button
-              onClick={() => onUpdateSettings({ orientation: 'landscape' })}
-              className={`py-2 px-3 rounded-xl text-xs font-semibold font-sans border-2 transition ${
-                settings.orientation === 'landscape'
-                  ? 'border-zinc-900 bg-zinc-90 w-full text-zinc-900'
-                  : 'border-zinc-100 bg-zinc-50 text-zinc-500 hover:bg-zinc-100'
-              }`}
-            >
-              Landscape
-            </button>
-          </div>
-        </div>
-
-        {/* Option 3: Double vs Single Sided */}
+        {/* Option 2: Double vs Single Sided */}
         <div className="space-y-2 border-b border-zinc-50 pb-4" id="setting-sides">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-zinc-800 font-sans">Print Sides</span>
