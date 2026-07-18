@@ -348,6 +348,7 @@ export default function App() {
       formData.append('name', userName);
       formData.append('pages', selectedFile.pages.toString());
       formData.append('copies', printSettings.copies.toString());
+      formData.append('sides', printSettings.sides === 'double' ? 'two-sided-long-edge' : 'one-sided');
 
       // 3. POST request to ${PI_URL}/api/upload
       const uploadRes = await fetch(`${PI_URL}/api/upload`, {
