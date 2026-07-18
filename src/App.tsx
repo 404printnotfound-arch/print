@@ -190,8 +190,63 @@ export default function App() {
     }
   };
 
+  // Helper to count PDF pages client-side using native binary stream parsing
+  const countPdfPages = (file: File): Promise<number> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const arr = new Uint8Array(reader.result as ArrayBuffer);
+          let text = '';
+          const chunkSize = 65536;
+          for (let i = 0; i < arr.length; i += chunkSize) {
+            const chunk = arr.subarray(i, i + chunkSize);
+            // Convert chunk of Uint8Array to binary string
+            text += String.fromCharCode.apply(null, chunk as any);
+          }
+          
+          if (!text.includes('%PDF')) {
+            resolve(1);
+            return;
+          }
+          
+          // Method 1: Count /Type /Page objects in the PDF tree
+          const pageTypeRegex = /\/Type\s*\/Page\b/g;
+          const pageTypeMatches = text.match(pageTypeRegex);
+          const countByPageType = pageTypeMatches ? pageTypeMatches.length : 0;
+          
+          // Method 2: Look for structural /Count inside /Type /Pages
+          const countRegex = /\/Count\s+(\d+)/g;
+          let m;
+          let maxCount = 0;
+          while ((m = countRegex.exec(text)) !== null) {
+            const val = parseInt(m[1], 10);
+            if (val > maxCount && val < 50000) {
+              maxCount = val;
+            }
+          }
+          
+          let count = 1;
+          if (maxCount > 0) {
+            count = maxCount;
+          } else if (countByPageType > 0) {
+            count = countByPageType;
+          }
+          
+          resolve(count > 0 ? count : 1);
+        } catch (err) {
+          resolve(1);
+        }
+      };
+      reader.onerror = () => {
+        resolve(1);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
   // Common file processor
-  const processSelectedFile = (file: File) => {
+  const processSelectedFile = async (file: File) => {
     // Validate size and extension
     const maxSize = 50 * 1024 * 1024; // 50MB
     if (file.size > maxSize) {
@@ -203,10 +258,10 @@ export default function App() {
     const name = file.name;
     const url = URL.createObjectURL(file);
     
-    // Guess page count (simplified simulator: if PDF, randomize 2-8 pages for awesome test fidelity, else 1)
-    let guessedPages = 1;
-    if (name.endsWith('.pdf')) {
-      guessedPages = Math.floor(Math.random() * 5) + 2; // Simulated auto page count for PDFs!
+    // Accurate page count detection for PDF, fallback to 1 for other files
+    let actualPages = 1;
+    if (name.toLowerCase().endsWith('.pdf')) {
+      actualPages = await countPdfPages(file);
     }
 
     // Initialize state
@@ -216,7 +271,7 @@ export default function App() {
       size: file.size,
       type,
       url,
-      pages: guessedPages
+      pages: actualPages
     });
 
     // Start animated high-fidelity upload simulation
