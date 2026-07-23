@@ -20,8 +20,9 @@ export default function PrintOptionsForm({
   onBack,
 }: PrintOptionsFormProps) {
   const isImage = file.type.startsWith('image/');
-  const pricePerPage = 3; // ₹3 each page print as requested!
-  const totalCost = file.pages * settings.copies * pricePerPage;
+  const pricePerPage = 3; // ₹3 each sheet print as requested!
+  const sheets = settings.sides === 'double' ? Math.ceil(file.pages / 2) : file.pages;
+  const totalCost = sheets * settings.copies * pricePerPage;
 
   return (
     <div className="space-y-6" id="options-form">

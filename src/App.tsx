@@ -106,13 +106,14 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Pricing variable based on ₹3 each print
+  // Pricing variable based on ₹3 each print sheet
   const pricePerPage = 3;
 
   // Calculate dynamic pricing
   const calculateTotalCost = () => {
     if (!selectedFile) return 0;
-    return selectedFile.pages * printSettings.copies * pricePerPage;
+    const sheets = printSettings.sides === 'double' ? Math.ceil(selectedFile.pages / 2) : selectedFile.pages;
+    return sheets * printSettings.copies * pricePerPage;
   };
 
   // Load official Razorpay checkout script dynamically
@@ -695,7 +696,7 @@ export default function App() {
                       <div className="space-y-0.5">
                         <h4 className="text-xs font-bold text-zinc-300 font-sans">Wait, how is print collected?</h4>
                         <p className="text-[11px] text-zinc-400 leading-relaxed font-sans">
-                          Once payment clears, the machine automatically processes and drops physical sheets in the collection dispenser beneath the touchscreen.
+                          Once payment clears, the machine automatically processes and drops physical sheets in the collection dispenser beneath the screen.
                         </p>
                       </div>
                     </div>
@@ -714,12 +715,6 @@ export default function App() {
                       <ChevronRight className="w-4 h-4 stroke-[2.5]" />
                     </button>
                   </form>
-                </div>
-
-                <div className="pt-4 text-center">
-                  <p className="text-[10px] text-zinc-650 font-mono">
-                    PRINT 404 KIOSK GATEWAY • DEMO VERSION 1.0.4
-                  </p>
                 </div>
               </motion.div>
             )}
@@ -1358,11 +1353,6 @@ export default function App() {
 
           </AnimatePresence>
         </main>
-
-        {/* Global branding footer for the center mobile container */}
-        <footer className="p-3 bg-zinc-900 text-center border-t border-zinc-850 text-zinc-500 text-[10px] font-sans">
-          <span>PRINT 404 Kiosk ATM Network Ltd. All Rights Protected.</span>
-        </footer>
 
       </div>
     </div>
