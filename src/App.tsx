@@ -433,57 +433,24 @@ export default function App() {
         throw new Error("Invalid response from Pi server: missing jobId or amount.");
       }
 
-      setPaymentStatusText('Creating payment order...');
-
-      // 3.5 Create Razorpay Order via backend API
-      const orderRes = await fetch(`${PI_URL}/api/create-order`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
-        },
-        body: JSON.stringify({
-          amount: amount,
-          jobId: jobId
-        }),
-      });
-
-      if (!orderRes.ok) {
-        throw new Error(`Order creation failed with status ${orderRes.status}`);
-      }
-
-      const orderData = await orderRes.json();
-      const rzpOrderId = orderData.orderId || orderData.order_id || orderData.id;
-      
-      // Ensure key is a valid Razorpay key ID, filtering out literal placeholder strings like "RAZORPAY_KEY_ID"
-      let rzpKeyId = orderData.keyId || orderData.key_id || orderData.key;
-      if (!rzpKeyId || rzpKeyId === 'RAZORPAY_KEY_ID' || typeof rzpKeyId !== 'string' || !rzpKeyId.startsWith('rzp_')) {
-        rzpKeyId = RAZORPAY_KEY; // "rzp_live_THc17HvfPrHZOq"
-      }
-
-      const rzpAmount = orderData.amount !== undefined ? orderData.amount : (amount * 100);
-
       setPaymentStatusText('Opening secure Razorpay Gateway...');
 
       // 4. Open Razorpay Checkout Window
       const options = {
-        key: rzpKeyId,
-        order_id: rzpOrderId,
-        amount: rzpAmount,
+        key: 'rzp_live_THc17HvfPrHZOq',
+        amount: amount * 100,
         currency: 'INR',
-        name: 'PRINT 404 Kiosk',
-        description: 'Print Job: ' + jobId,
+        name: 'Print404',
+        description: 'Print Service',
         image: 'https://ais-pre-topbswiopeu3lodqo2vguu-136008080948.asia-southeast1.run.app/assets/logo.png',
         handler: async function (response: any) {
           const paymentId = response.razorpay_payment_id;
-          const orderId = response.razorpay_order_id;
-          const signature = response.razorpay_signature;
           
           setPaymentProcessing(true);
           setPaymentStatusText('Verifying & Confirming payment...');
 
           try {
-            // 5. POST to confirm-payment with jobId, paymentId, orderId, signature
+            // 5. POST to confirm-payment with jobId and paymentId
             const confirmRes = await fetch(`${PI_URL}/api/confirm-payment`, {
               method: 'POST',
               headers: {
@@ -493,8 +460,6 @@ export default function App() {
               body: JSON.stringify({
                 jobId: jobId,
                 paymentId: paymentId,
-                orderId: orderId,
-                signature: signature,
               }),
             });
 
@@ -502,7 +467,7 @@ export default function App() {
               throw new Error(`Payment confirmation failed with status ${confirmRes.status}`);
             }
 
-            // Set active order success state based on real verification
+            // Set active order success state
             setActiveOrder((prev) => prev ? {
               ...prev,
               paymentStatus: 'success',
