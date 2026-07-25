@@ -106,7 +106,7 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Pricing variable based on ₹3 each print sheet
+  // Pricing variable based on ₹3 per page
   const pricePerPage = 3;
 
   // Calculate dynamic pricing
@@ -114,8 +114,7 @@ export default function App() {
     if (!selectedFile) return 0;
     const totalPages = Math.max(1, parseInt(String(selectedFile.pages || 1), 10));
     const copiesCount = Math.max(1, parseInt(String(printSettings.copies || 1), 10));
-    const sheetsPerCopy = printSettings.sides === 'double' ? Math.ceil(totalPages / 2) : totalPages;
-    return sheetsPerCopy * copiesCount * pricePerPage;
+    return totalPages * copiesCount * pricePerPage;
   };
 
   // Load official Razorpay checkout script dynamically
@@ -427,7 +426,7 @@ export default function App() {
 
       const uploadData = await uploadRes.json();
       const jobId = uploadData.jobId;
-      const amount = uploadData.amount;
+      const amount = activeOrder?.amount ?? uploadData.amount;
 
       if (!jobId || amount === undefined) {
         throw new Error("Invalid response from Pi server: missing jobId or amount.");
