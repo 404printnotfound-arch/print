@@ -35,7 +35,7 @@ import Confetti from './components/Confetti';
 // CONFIGURATION CONSTANTS
 // ==========================================
 const PI_URL = "https://crouton-liquid-undivided.ngrok-free.dev";
-const RAZORPAY_KEY = "rzp_live_THc17HvfPrHZOq";
+const RAZORPAY_KEY = "rzp_live_THf6VO8qlp0Qnp";
 // ==========================================
 
 // Ensure process.env is defined for the browser and maps seamlessly to Vite environment
@@ -437,7 +437,7 @@ export default function App() {
 
       // 4. Open Razorpay Checkout Window
       const options = {
-        key: 'rzp_live_THc17HvfPrHZOq',
+        key: 'rzp_live_THf6VO8qlp0Qnp',
         amount: amount * 100,
         currency: 'INR',
         name: 'Print404',
