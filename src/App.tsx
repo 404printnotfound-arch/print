@@ -112,8 +112,10 @@ export default function App() {
   // Calculate dynamic pricing
   const calculateTotalCost = () => {
     if (!selectedFile) return 0;
-    const sheets = printSettings.sides === 'double' ? Math.ceil(selectedFile.pages / 2) : selectedFile.pages;
-    return sheets * printSettings.copies * pricePerPage;
+    const totalPages = Math.max(1, parseInt(String(selectedFile.pages || 1), 10));
+    const copiesCount = Math.max(1, parseInt(String(printSettings.copies || 1), 10));
+    const sheetsPerCopy = printSettings.sides === 'double' ? Math.ceil(totalPages / 2) : totalPages;
+    return sheetsPerCopy * copiesCount * pricePerPage;
   };
 
   // Load official Razorpay checkout script dynamically
@@ -399,12 +401,16 @@ export default function App() {
       }
 
       // 2. Create FormData
+      const copiesCount = Math.max(1, parseInt(String(activeOrder?.settings?.copies ?? printSettings.copies ?? 1), 10));
+      const totalPages = Math.max(1, parseInt(String(selectedFile.pages ?? 1), 10));
+      const sidesSetting = (activeOrder?.settings?.sides || printSettings.sides) === 'double' ? 'two-sided-long-edge' : 'one-sided';
+
       const formData = new FormData();
       formData.append('file', fileToUpload);
       formData.append('name', userName);
-      formData.append('pages', selectedFile.pages.toString());
-      formData.append('copies', printSettings.copies.toString());
-      formData.append('sides', printSettings.sides === 'double' ? 'two-sided-long-edge' : 'one-sided');
+      formData.append('pages', totalPages.toString());
+      formData.append('copies', copiesCount.toString());
+      formData.append('sides', sidesSetting);
 
       // 3. POST request to ${PI_URL}/api/upload
       const uploadRes = await fetch(`${PI_URL}/api/upload`, {
