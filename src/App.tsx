@@ -35,7 +35,7 @@ import Confetti from './components/Confetti';
 // CONFIGURATION CONSTANTS
 // ==========================================
 const PI_URL = "https://crouton-liquid-undivided.ngrok-free.dev";
-const RAZORPAY_KEY = "rzp_test_T2C6JRotNyrJVN";
+const RAZORPAY_KEY = "rzp_live_THc17HvfPrHZOq";
 // ==========================================
 
 // Ensure process.env is defined for the browser and maps seamlessly to Vite environment
@@ -433,24 +433,51 @@ export default function App() {
         throw new Error("Invalid response from Pi server: missing jobId or amount.");
       }
 
+      setPaymentStatusText('Creating payment order...');
+
+      // 3.5 Create Razorpay Order via backend API
+      const orderRes = await fetch(`${PI_URL}/api/create-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({
+          amount: amount,
+          jobId: jobId
+        }),
+      });
+
+      if (!orderRes.ok) {
+        throw new Error(`Order creation failed with status ${orderRes.status}`);
+      }
+
+      const orderData = await orderRes.json();
+      const rzpOrderId = orderData.orderId || orderData.order_id || orderData.id;
+      const rzpKeyId = orderData.keyId || orderData.key_id || orderData.key || RAZORPAY_KEY;
+      const rzpAmount = orderData.amount !== undefined ? orderData.amount : (amount * 100);
+
       setPaymentStatusText('Opening secure Razorpay Gateway...');
 
       // 4. Open Razorpay Checkout Window
       const options = {
-        key: RAZORPAY_KEY,
-        amount: amount * 100, // Converts [Amount from Pi] to paise as specified
+        key: rzpKeyId,
+        order_id: rzpOrderId,
+        amount: rzpAmount,
         currency: 'INR',
         name: 'PRINT 404 Kiosk',
         description: 'Print Job: ' + jobId,
         image: 'https://ais-pre-topbswiopeu3lodqo2vguu-136008080948.asia-southeast1.run.app/assets/logo.png',
         handler: async function (response: any) {
           const paymentId = response.razorpay_payment_id;
+          const orderId = response.razorpay_order_id;
+          const signature = response.razorpay_signature;
           
           setPaymentProcessing(true);
           setPaymentStatusText('Verifying & Confirming payment...');
 
           try {
-            // 5. POST to confirm-payment with the jobId
+            // 5. POST to confirm-payment with jobId, paymentId, orderId, signature
             const confirmRes = await fetch(`${PI_URL}/api/confirm-payment`, {
               method: 'POST',
               headers: {
@@ -460,6 +487,8 @@ export default function App() {
               body: JSON.stringify({
                 jobId: jobId,
                 paymentId: paymentId,
+                orderId: orderId,
+                signature: signature,
               }),
             });
 
