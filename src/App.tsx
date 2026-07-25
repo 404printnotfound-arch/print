@@ -372,7 +372,7 @@ export default function App() {
     if (!activeOrder || !selectedFile) return;
 
     setPaymentProcessing(true);
-    setPaymentStatusText('Uploading file to Pi server...');
+    setPaymentStatusText('Processing...');
 
     try {
       // 1. Prepare file
@@ -1124,16 +1124,19 @@ export default function App() {
                     >
                       Back
                     </button>
-                    <button
+                    <motion.button
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
                       disabled={paymentProcessing}
                       onClick={handleInitiatePayment}
-                      className="flex-1 py-3.5 px-4 rounded-xl text-center text-sm font-black bg-yellow-400 hover:bg-yellow-500 text-zinc-950 transition active:scale-98 shadow-[0_4px_16px_rgba(250,204,21,0.25)] flex items-center justify-center gap-2 font-sans"
+                      className="flex-1 py-3.5 px-4 rounded-xl text-center text-sm font-black bg-yellow-400 hover:bg-yellow-500 text-zinc-950 transition active:scale-98 shadow-[0_4px_16px_rgba(250,204,21,0.25)] flex items-center justify-center gap-2 font-sans disabled:opacity-80"
                       id="payment-execute-btn"
                     >
                       {paymentProcessing ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin stroke-[2.5]" />
-                          <span>{paymentStatusText || `Authorizing ₹${activeOrder.amount}...`}</span>
+                          <span>{paymentStatusText || "Processing..."}</span>
                         </>
                       ) : (
                         <>
@@ -1141,7 +1144,7 @@ export default function App() {
                           <span>Pay & Print ₹{activeOrder.amount}</span>
                         </>
                       )}
-                    </button>
+                    </motion.button>
                   </div>
                 </div>
               </motion.div>
