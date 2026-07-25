@@ -454,7 +454,13 @@ export default function App() {
 
       const orderData = await orderRes.json();
       const rzpOrderId = orderData.orderId || orderData.order_id || orderData.id;
-      const rzpKeyId = orderData.keyId || orderData.key_id || orderData.key || RAZORPAY_KEY;
+      
+      // Ensure key is a valid Razorpay key ID, filtering out literal placeholder strings like "RAZORPAY_KEY_ID"
+      let rzpKeyId = orderData.keyId || orderData.key_id || orderData.key;
+      if (!rzpKeyId || rzpKeyId === 'RAZORPAY_KEY_ID' || typeof rzpKeyId !== 'string' || !rzpKeyId.startsWith('rzp_')) {
+        rzpKeyId = RAZORPAY_KEY; // "rzp_live_THc17HvfPrHZOq"
+      }
+
       const rzpAmount = orderData.amount !== undefined ? orderData.amount : (amount * 100);
 
       setPaymentStatusText('Opening secure Razorpay Gateway...');
