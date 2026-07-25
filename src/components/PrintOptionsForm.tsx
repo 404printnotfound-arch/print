@@ -20,10 +20,13 @@ export default function PrintOptionsForm({
   onBack,
 }: PrintOptionsFormProps) {
   const isImage = file.type.startsWith('image/');
-  const pricePerPage = 3; // ₹3 per page print
+  const pricePerSheet = 3; // ₹3 per paper sheet
   const totalPages = Math.max(1, parseInt(String(file.pages || 1), 10));
   const copiesCount = Math.max(1, parseInt(String(settings.copies || 1), 10));
-  const totalCost = totalPages * copiesCount * pricePerPage;
+  const isDuplex = settings.sides === 'double';
+  const sheetsPerCopy = isDuplex ? Math.ceil(totalPages / 2) : totalPages;
+  const totalSheets = sheetsPerCopy * copiesCount;
+  const totalCost = totalSheets * pricePerSheet;
 
   return (
     <div className="space-y-6" id="options-form">
@@ -45,10 +48,10 @@ export default function PrintOptionsForm({
           <p className="text-xs text-zinc-400 font-mono">Size: {(file.size / 1024 / 1024).toFixed(2)} MB</p>
           <div className="flex gap-2 text-[11px] text-zinc-300 font-sans font-medium">
             <span className="bg-zinc-800 border border-zinc-700 px-2 py-0.5 rounded">
-              {file.pages} page{file.pages > 1 ? 's' : ''}
+              {file.pages} page{file.pages > 1 ? 's' : ''} ({sheetsPerCopy} sheet{sheetsPerCopy > 1 ? 's' : ''}/copy)
             </span>
             <span className="bg-zinc-800 border border-zinc-700 px-2 py-0.5 rounded">
-              ₹3 / print
+              ₹3 / sheet
             </span>
           </div>
         </div>
@@ -136,16 +139,22 @@ export default function PrintOptionsForm({
         <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">Price Breakdown</span>
         <div className="space-y-2 text-xs font-sans text-zinc-300">
           <div className="flex justify-between">
-            <span>Pages auto-detected</span>
+            <span>Pages Auto-Detected</span>
             <span className="font-mono text-white">{file.pages} Page{file.pages > 1 ? 's' : ''}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Total Paper Sheets</span>
+            <span className="font-mono text-white">
+              {totalSheets} Sheet{totalSheets > 1 ? 's' : ''} {isDuplex ? `(${totalPages} pages on ${sheetsPerCopy} sheet/copy)` : ''}
+            </span>
           </div>
           <div className="flex justify-between">
             <span>Quantity Copies</span>
             <span className="font-mono text-white">x{settings.copies}</span>
           </div>
           <div className="flex justify-between">
-            <span>Unit print rate (Standard)</span>
-            <span className="font-mono text-white">₹{pricePerPage} each</span>
+            <span>Rate per Sheet</span>
+            <span className="font-mono text-white">₹{pricePerSheet} / sheet</span>
           </div>
           <div className="border-t border-zinc-800 pt-3 flex justify-between items-center text-sm font-semibold">
             <span className="text-white">Amount Total</span>

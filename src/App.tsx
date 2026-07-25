@@ -106,15 +106,17 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Pricing variable based on ₹3 per page
-  const pricePerPage = 3;
+  // Pricing variable based on ₹3 per physical paper sheet
+  const pricePerSheet = 3;
 
-  // Calculate dynamic pricing
+  // Calculate dynamic pricing based on physical paper sheets
   const calculateTotalCost = () => {
     if (!selectedFile) return 0;
     const totalPages = Math.max(1, parseInt(String(selectedFile.pages || 1), 10));
     const copiesCount = Math.max(1, parseInt(String(printSettings.copies || 1), 10));
-    return totalPages * copiesCount * pricePerPage;
+    const sheetsPerCopy = printSettings.sides === 'double' ? Math.ceil(totalPages / 2) : totalPages;
+    const totalSheets = sheetsPerCopy * copiesCount;
+    return totalSheets * pricePerSheet;
   };
 
   // Load official Razorpay checkout script dynamically
@@ -557,8 +559,8 @@ export default function App() {
           </div>
 
           <div className="text-right">
-            <div className="text-sm font-bold text-yellow-400 font-mono">₹{pricePerPage} / Print</div>
-            <div className="text-[10px] text-zinc-400 font-sans">A4 Black & White Prints</div>
+            <div className="text-sm font-bold text-yellow-400 font-mono">₹{pricePerSheet} / Sheet</div>
+            <div className="text-[10px] text-zinc-400 font-sans">A4 Standard Paper</div>
           </div>
         </header>
 
@@ -1049,16 +1051,24 @@ export default function App() {
                         <span className="text-white font-medium truncate max-w-[200px]">{activeOrder.file?.name}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Print Pages Info</span>
-                        <span className="text-white font-medium font-mono">{activeOrder.file?.pages} Pg(s)</span>
+                        <span>Print Pages & Mode</span>
+                        <span className="text-white font-medium font-mono">
+                          {activeOrder.file?.pages} Pg(s) • {activeOrder.settings.sides === 'double' ? 'Duplex' : 'Single'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Total Paper Sheets</span>
+                        <span className="text-white font-medium font-mono">
+                          {(activeOrder.settings.sides === 'double' ? Math.ceil((activeOrder.file?.pages || 1) / 2) : (activeOrder.file?.pages || 1)) * activeOrder.settings.copies} Sheet(s)
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span>Copies Multiplier</span>
                         <span className="text-white font-medium font-mono">x {activeOrder.settings.copies} Copy(s)</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Paper Spec</span>
-                        <span className="text-white font-medium capitalize font-mono">Premium A4 Sheet</span>
+                        <span>Rate per Sheet</span>
+                        <span className="text-white font-medium font-mono">₹{pricePerSheet} / Sheet</span>
                       </div>
                     </div>
 
@@ -1265,6 +1275,16 @@ export default function App() {
                         <div className="flex justify-between">
                           <span className="font-medium text-zinc-500">Pages Auto Count</span>
                           <span className="font-bold text-black font-mono">{activeOrder.file?.pages} Pg(s)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-zinc-500">Print Mode</span>
+                          <span className="font-bold text-black font-mono capitalize">{activeOrder.settings.sides === 'double' ? 'Duplex (2-sided)' : 'Single-sided'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-zinc-500">Total Paper Sheets</span>
+                          <span className="font-bold text-black font-mono">
+                            {(activeOrder.settings.sides === 'double' ? Math.ceil((activeOrder.file?.pages || 1) / 2) : (activeOrder.file?.pages || 1)) * activeOrder.settings.copies} Sheet(s)
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="font-medium text-zinc-500">Quantity Copied</span>
