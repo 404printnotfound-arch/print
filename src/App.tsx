@@ -823,7 +823,7 @@ export default function App() {
                         </button>
                       </div>
 
-                      {/* Display page count selector / info indicator */}
+                      {/* Display page count info indicator */}
                       <div className="bg-zinc-950 p-3.5 border border-zinc-850 rounded-xl flex items-center justify-between">
                         <div className="space-y-0.5">
                           <span className="text-xs font-semibold text-zinc-300 block font-sans">Pages Count</span>
@@ -833,23 +833,10 @@ export default function App() {
                               : 'Single print layout for images'}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setSelectedFile(prev => prev ? { ...prev, pages: Math.max(1, prev.pages - 1) } : null)}
-                            className="w-7 h-7 bg-zinc-850 hover:bg-zinc-800 border border-zinc-750 font-bold rounded text-white flex items-center justify-center text-xs active:scale-90"
-                            disabled={selectedFile.pages <= 1}
-                          >
-                            −
-                          </button>
-                          <span className="text-sm font-bold font-mono text-yellow-400 w-5 text-center">
-                            {selectedFile.pages}
+                        <div className="px-3 py-1 bg-zinc-900 border border-zinc-800 rounded-lg">
+                          <span className="text-sm font-bold font-mono text-yellow-400">
+                            {selectedFile.pages} {selectedFile.pages === 1 ? 'Page' : 'Pages'}
                           </span>
-                          <button
-                            onClick={() => setSelectedFile(prev => prev ? { ...prev, pages: Math.min(250, prev.pages + 1) } : null)}
-                            className="w-7 h-7 bg-zinc-850 hover:bg-zinc-800 border border-zinc-750 font-bold rounded text-white flex items-center justify-center text-xs active:scale-90"
-                          >
-                            +
-                          </button>
                         </div>
                       </div>
 
