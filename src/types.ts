@@ -24,15 +24,31 @@ export interface FileDetails {
   pages: number;
 }
 
+export interface PrintItem {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  type: string;
+  url: string;
+  croppedUrl?: string;
+  croppedBlob?: Blob;
+  isCropped?: boolean;
+  pages: number;
+  settings: PrintSettings;
+}
+
 export interface OrderDetails {
   id: string;
   code: string;
   userName: string;
   userPhone: string;
-  file: FileDetails | null;
-  settings: PrintSettings;
+  files: PrintItem[];
+  file?: FileDetails | null; // legacy single file reference if needed
+  settings?: PrintSettings;
   amount: number;
   paymentStatus: 'pending' | 'success' | 'failed';
   printStatus: 'waiting' | 'printing' | 'success' | 'failed';
   createdAt: string;
 }
+

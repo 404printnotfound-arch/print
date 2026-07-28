@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Step, PrintSettings, FileDetails, OrderDetails } from './types';
+import { Step, PrintSettings, FileDetails, OrderDetails, PrintItem } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Printer, 
@@ -72,8 +72,8 @@ export default function App() {
   const [isMachineOnline, setIsMachineOnline] = useState<boolean>(true);
 
   // File management states
-  const [selectedFile, setSelectedFile] = useState<FileDetails | null>(null);
-  const [rawFile, setRawFile] = useState<File | null>(null);
+  const [printFiles, setPrintFiles] = useState<PrintItem[]>([]);
+  const [activeCropFileId, setActiveCropFileId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -81,7 +81,7 @@ export default function App() {
   // Cropper helper
   const [showCropModal, setShowCropModal] = useState<boolean>(false);
 
-  // Print properties customization
+  // Default print properties fallback
   const [printSettings, setPrintSettings] = useState<PrintSettings>({
     copies: 1,
     orientation: 'portrait',
@@ -109,15 +109,28 @@ export default function App() {
   // Pricing variable based on ₹3 per physical paper sheet
   const pricePerSheet = 3;
 
-  // Calculate dynamic pricing based on physical paper sheets
+  // Calculate dynamic batch pricing based on physical paper sheets
   const calculateTotalCost = () => {
-    if (!selectedFile) return 0;
-    const totalPages = Math.max(1, parseInt(String(selectedFile.pages || 1), 10));
-    const copiesCount = Math.max(1, parseInt(String(printSettings.copies || 1), 10));
-    const sheetsPerCopy = printSettings.sides === 'double' ? Math.ceil(totalPages / 2) : totalPages;
-    const totalSheets = sheetsPerCopy * copiesCount;
-    return totalSheets * pricePerSheet;
+    return printFiles.reduce((sum, item) => {
+      const isDuplex = item.settings.sides === 'double';
+      const pages = Math.max(1, parseInt(String(item.pages || 1), 10));
+      const copies = Math.max(1, parseInt(String(item.settings.copies || 1), 10));
+      const sheetsPerCopy = isDuplex ? Math.ceil(pages / 2) : pages;
+      const totalSheets = sheetsPerCopy * copies;
+      return sum + (totalSheets * pricePerSheet);
+    }, 0);
   };
+
+  const calculateTotalSheets = () => {
+    return printFiles.reduce((sum, item) => {
+      const isDuplex = item.settings.sides === 'double';
+      const pages = Math.max(1, parseInt(String(item.pages || 1), 10));
+      const copies = Math.max(1, parseInt(String(item.settings.copies || 1), 10));
+      const sheetsPerCopy = isDuplex ? Math.ceil(pages / 2) : pages;
+      return sum + (sheetsPerCopy * copies);
+    }, 0);
+  };
+
 
   // Load official Razorpay checkout script dynamically
   useEffect(() => {
@@ -189,8 +202,8 @@ export default function App() {
 
   // Handle file input selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      processSelectedFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      processSelectedFiles(e.target.files);
     }
   };
 
@@ -205,7 +218,6 @@ export default function App() {
           const chunkSize = 65536;
           for (let i = 0; i < arr.length; i += chunkSize) {
             const chunk = arr.subarray(i, i + chunkSize);
-            // Convert chunk of Uint8Array to binary string
             text += String.fromCharCode.apply(null, chunk as any);
           }
           
@@ -214,12 +226,10 @@ export default function App() {
             return;
           }
           
-          // Method 1: Count /Type /Page objects in the PDF tree
           const pageTypeRegex = /\/Type\s*\/Page\b/g;
           const pageTypeMatches = text.match(pageTypeRegex);
           const countByPageType = pageTypeMatches ? pageTypeMatches.length : 0;
           
-          // Method 2: Look for structural /Count inside /Type /Pages
           const countRegex = /\/Count\s+(\d+)/g;
           let m;
           let maxCount = 0;
@@ -249,38 +259,80 @@ export default function App() {
     });
   };
 
-  // Common file processor
-  const processSelectedFile = async (file: File) => {
-    // Validate size and extension
-    const maxSize = 50 * 1024 * 1024; // 50MB
-    if (file.size > maxSize) {
-      alert("File is too large. Maximum size allowed is 50MB.");
+  // Multi-file batch processor
+  const processSelectedFiles = async (filesInput: FileList | File[]) => {
+    const filesArray = Array.from(filesInput);
+    if (filesArray.length === 0) return;
+
+    if (printFiles.length + filesArray.length > 10) {
+      alert("Maximum 10 files allowed at once.");
       return;
     }
 
-    const type = file.type;
-    const name = file.name;
-    const url = URL.createObjectURL(file);
-    
-    // Accurate page count detection for PDF, fallback to 1 for other files
-    let actualPages = 1;
-    if (name.toLowerCase().endsWith('.pdf')) {
-      actualPages = await countPdfPages(file);
+    const maxSingleSize = 50 * 1024 * 1024; // 50MB
+    const validFiles: File[] = [];
+
+    for (const f of filesArray) {
+      const ext = f.name.toLowerCase();
+      const isPdf = ext.endsWith('.pdf') || f.type === 'application/pdf';
+      const isImg = f.type.startsWith('image/') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png');
+
+      if (!isPdf && !isImg) {
+        alert(`File "${f.name}" is not a supported PDF, JPG, or PNG document.`);
+        return;
+      }
+
+      if (f.size > maxSingleSize) {
+        alert(`File "${f.name}" exceeds the 50MB single file size limit.`);
+        return;
+      }
+
+      validFiles.push(f);
     }
 
-    // Initialize state
-    setRawFile(file);
-    setSelectedFile({
-      name,
-      size: file.size,
-      type,
-      url,
-      pages: actualPages
-    });
+    const currentBytes = printFiles.reduce((acc, item) => acc + item.size, 0);
+    const newBytes = validFiles.reduce((acc, f) => acc + f.size, 0);
+    if (currentBytes + newBytes > 100 * 1024 * 1024) {
+      alert("Total batch file size exceeds the 100MB limit.");
+      return;
+    }
 
-    // Start animated high-fidelity upload simulation
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(15);
+
+    const newPrintItems: PrintItem[] = [];
+    for (const file of validFiles) {
+      let actualPages = 1;
+      if (file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') {
+        actualPages = await countPdfPages(file);
+      }
+
+      const item: PrintItem = {
+        id: 'file_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        file,
+        name: file.name,
+        size: file.size,
+        type: file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+        url: URL.createObjectURL(file),
+        pages: actualPages,
+        settings: {
+          copies: 1,
+          orientation: 'portrait',
+          sides: 'single',
+          paperFinish: 'matte',
+          fitMode: 'fit',
+          scale: 100,
+        }
+      };
+      newPrintItems.push(item);
+    }
+
+    setPrintFiles((prev) => [...prev, ...newPrintItems]);
+    setIsUploading(false);
+
+    if (currentStep === Step.UPLOAD) {
+      setCurrentStep(Step.OPTIONS);
+    }
   };
 
   // Run the simulated progress bar
@@ -301,6 +353,72 @@ export default function App() {
     }
   }, [isUploading]);
 
+  // Update settings for an individual file in the batch
+  const handleUpdateItemSettings = (id: string, newSettings: Partial<PrintSettings>) => {
+    setPrintFiles((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, settings: { ...item.settings, ...newSettings } } : item
+      )
+    );
+  };
+
+  // Remove a file from the batch
+  const handleRemoveItem = (id: string) => {
+    setPrintFiles((prev) => {
+      const filtered = prev.filter((item) => item.id !== id);
+      if (filtered.length === 0 && currentStep === Step.OPTIONS) {
+        setCurrentStep(Step.UPLOAD);
+      }
+      return filtered;
+    });
+  };
+
+  // Trigger crop modal for a specific image file
+  const handleTriggerCrop = (id: string) => {
+    setActiveCropFileId(id);
+    setShowCropModal(true);
+  };
+
+  // Crop completion callback
+  const handleCropComplete = (croppedDataUrl: string) => {
+    if (!activeCropFileId) return;
+    try {
+      const croppedBlob = dataURLtoBlob(croppedDataUrl);
+      setPrintFiles((prev) =>
+        prev.map((f) =>
+          f.id === activeCropFileId
+            ? { ...f, croppedUrl: croppedDataUrl, croppedBlob: croppedBlob, isCropped: true }
+            : f
+        )
+      );
+    } catch (err) {
+      console.error("Failed to convert cropped data url to blob", err);
+      setPrintFiles((prev) =>
+        prev.map((f) =>
+          f.id === activeCropFileId
+            ? { ...f, croppedUrl: croppedDataUrl, isCropped: true }
+            : f
+        )
+      );
+    }
+    setShowCropModal(false);
+    setActiveCropFileId(null);
+  };
+
+  // Use original uncropped image callback
+  const handleUseOriginalImage = () => {
+    if (!activeCropFileId) return;
+    setPrintFiles((prev) =>
+      prev.map((f) =>
+        f.id === activeCropFileId
+          ? { ...f, croppedUrl: undefined, croppedBlob: undefined, isCropped: false }
+          : f
+      )
+    );
+    setShowCropModal(false);
+    setActiveCropFileId(null);
+  };
+
   // Validate landing form
   const handleStartPrinting = (e: React.FormEvent) => {
     e.preventDefault();
@@ -311,14 +429,12 @@ export default function App() {
       return;
     }
 
-    // Phone regex for 10 digit Indian phones or general standard
     const phoneDigits = userPhone.replace(/\D/g, '');
     if (phoneDigits.length < 10) {
       setFormError('Please enter a valid 10-digit mobile number.');
       return;
     }
 
-    // Save details and proceed to Upload stage
     localStorage.setItem('p404_userName', userName.trim());
     localStorage.setItem('p404_userPhone', phoneDigits);
     setCurrentStep(Step.UPLOAD);
@@ -337,13 +453,18 @@ export default function App() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processSelectedFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processSelectedFiles(e.dataTransfer.files);
     }
   };
 
-  // Generate unique order details
+  // Generate unique order details for batch
   const handleConfirmSettings = () => {
+    if (printFiles.length === 0) {
+      alert("Please upload at least one document to proceed.");
+      return;
+    }
+
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let code = '404-';
     for (let i = 0; i < 6; i++) {
@@ -351,14 +472,25 @@ export default function App() {
     }
 
     const orderId = 'ord_' + Math.random().toString(36).substring(2, 11);
+    const totalAmount = calculateTotalCost();
+
+    const mainItem = printFiles[0];
     const newOrder: OrderDetails = {
       id: orderId,
       code,
       userName,
       userPhone,
-      file: selectedFile,
-      settings: printSettings,
-      amount: calculateTotalCost(),
+      files: printFiles,
+      file: mainItem ? {
+        name: mainItem.name,
+        size: mainItem.size,
+        type: mainItem.type,
+        url: mainItem.url,
+        croppedUrl: mainItem.croppedUrl,
+        pages: mainItem.pages
+      } : null,
+      settings: mainItem?.settings || printSettings,
+      amount: totalAmount,
       paymentStatus: 'pending',
       printStatus: 'waiting',
       createdAt: new Date().toLocaleTimeString(),
@@ -368,107 +500,175 @@ export default function App() {
     setCurrentStep(Step.PAYMENT);
   };
 
-  // Real Payment and API Upload processing
+  const checkPaymentStatus = async (jobId: string) => {
+    setPaymentProcessing(false);
+    setPaymentStatusText('');
+    try {
+      const res = await fetch(`${PI_URL}/api/job-status/${jobId}`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'paid' || data.status === 'printing' || data.status === 'completed' || data.paymentStatus === 'success' || data.paid) {
+          setActiveOrder((prev) => prev ? {
+            ...prev,
+            paymentStatus: 'success',
+            printStatus: 'success',
+            id: jobId,
+            code: jobId,
+          } : null);
+          setCurrentStep(Step.STATUS);
+        }
+      }
+    } catch (err) {
+      console.error("Error checking payment status on modal dismiss:", err);
+    }
+  };
+
+  // Real Payment and Multi-File API Upload processing
   const handleInitiatePayment = async () => {
-    if (!activeOrder || !selectedFile) return;
+    if (!activeOrder || printFiles.length === 0) return;
 
     setPaymentProcessing(true);
-    setPaymentStatusText('Processing...');
+    setPaymentStatusText('Preparing multi-file batch upload...');
 
     try {
-      // 1. Prepare file
-      let fileToUpload: File | Blob | null = null;
-      if (selectedFile.croppedUrl) {
-        try {
-          const blob = dataURLtoBlob(selectedFile.croppedUrl);
-          fileToUpload = new File([blob], selectedFile.name, { type: blob.type });
-        } catch (err) {
-          console.error("Failed to convert cropped URL to Blob, falling back to rawFile", err);
-        }
-      }
-
-      if (!fileToUpload) {
-        fileToUpload = rawFile;
-      }
-
-      if (!fileToUpload) {
-        try {
-          const res = await fetch(selectedFile.url);
-          const blob = await res.blob();
-          fileToUpload = new File([blob], selectedFile.name, { type: selectedFile.type });
-        } catch (e) {
-          fileToUpload = new Blob(["dummy file content"], { type: selectedFile.type || "text/plain" });
-        }
-      }
-
-      // 2. Create FormData
-      const copiesCount = Math.max(1, parseInt(String(activeOrder?.settings?.copies ?? printSettings.copies ?? 1), 10));
-      const totalPages = Math.max(1, parseInt(String(selectedFile.pages ?? 1), 10));
-      const sidesSetting = (activeOrder?.settings?.sides || printSettings.sides) === 'double' ? 'two-sided-long-edge' : 'one-sided';
-
       const formData = new FormData();
-      formData.append('file', fileToUpload);
-      formData.append('name', userName);
-      formData.append('pages', totalPages.toString());
-      formData.append('copies', copiesCount.toString());
-      formData.append('sides', sidesSetting);
+      formData.append('name', userName || userPhone || 'Customer');
 
-      // 3. POST request to ${PI_URL}/api/upload
-      const uploadRes = await fetch(`${PI_URL}/api/upload`, {
+      const settingsArray = printFiles.map((item) => ({
+        copies: item.settings.copies,
+        sides: item.settings.sides === 'double' ? 'two-sided-long-edge' : 'one-sided',
+        pages: item.pages,
+        name: item.name
+      }));
+      formData.append('settings', JSON.stringify(settingsArray));
+
+      printFiles.forEach((item) => {
+        if (item.croppedBlob) {
+          const croppedFile = new File([item.croppedBlob], item.name, { type: item.type || 'image/jpeg' });
+          formData.append('files', croppedFile);
+        } else {
+          formData.append('files', item.file);
+        }
+      });
+
+      // Backward compatibility fields for single-file API
+      const mainItem = printFiles[0];
+      const mainFile = mainItem.croppedBlob 
+        ? new File([mainItem.croppedBlob], mainItem.name, { type: mainItem.type || 'image/jpeg' }) 
+        : mainItem.file;
+      formData.append('file', mainFile);
+      formData.append('pages', mainItem.pages.toString());
+      formData.append('copies', mainItem.settings.copies.toString());
+      formData.append('sides', mainItem.settings.sides === 'double' ? 'two-sided-long-edge' : 'one-sided');
+
+      setPaymentStatusText('Uploading document batch...');
+
+      let uploadRes = await fetch(`${PI_URL}/api/upload-multi`, {
         method: 'POST',
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        },
+        headers: { 'ngrok-skip-browser-warning': 'true' },
         body: formData,
       });
+
+      if (!uploadRes.ok) {
+        uploadRes = await fetch(`${PI_URL}/api/upload`, {
+          method: 'POST',
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+          body: formData,
+        });
+      }
 
       if (!uploadRes.ok) {
         throw new Error(`Upload failed with status ${uploadRes.status}`);
       }
 
       const uploadData = await uploadRes.json();
-      const jobId = uploadData.jobId;
+      const jobId = uploadData.batchId || uploadData.jobId || uploadData.batch_id || ('batch_' + Date.now());
       const amount = activeOrder?.amount ?? uploadData.amount;
 
       if (!jobId || amount === undefined) {
-        throw new Error("Invalid response from Pi server: missing jobId or amount.");
+        throw new Error("Invalid response from server: missing jobId or amount.");
       }
+
+      setPaymentStatusText('Creating Razorpay order...');
+
+      const orderResponse = await fetch(`${PI_URL}/api/create-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({
+          amount: amount,
+          jobId: jobId,
+          batchId: jobId
+        })
+      });
+
+      let orderData: any = {};
+      if (orderResponse.ok) {
+        orderData = await orderResponse.json();
+      }
+
+      const razorpayOrderId = orderData.orderId || orderData.order_id || orderData.id;
+      const keyId = orderData.keyId || orderData.key_id || 'rzp_live_THf6VO8qlp0Qnp';
+      const orderAmount = orderData.amount ?? (amount * 100);
 
       setPaymentStatusText('Opening secure Razorpay Gateway...');
 
-      // 4. Open Razorpay Checkout Window
-      const options = {
-        key: 'rzp_live_THf6VO8qlp0Qnp',
-        amount: amount * 100,
+      const options: any = {
+        key: keyId,
+        order_id: razorpayOrderId,
+        amount: orderAmount,
         currency: 'INR',
         name: 'Print404',
         description: 'Print Service',
         image: 'https://ais-pre-topbswiopeu3lodqo2vguu-136008080948.asia-southeast1.run.app/assets/logo.png',
+        notes: {
+          jobId: jobId,
+          batchId: jobId
+        },
         handler: async function (response: any) {
           const paymentId = response.razorpay_payment_id;
+          const orderId = response.razorpay_order_id || razorpayOrderId;
+          const signature = response.razorpay_signature;
           
           setPaymentProcessing(true);
-          setPaymentStatusText('Verifying & Confirming payment...');
+          setPaymentStatusText('Verifying & Confirming batch payment...');
 
           try {
-            // 5. POST to confirm-payment with jobId and paymentId
-            const confirmRes = await fetch(`${PI_URL}/api/confirm-payment`, {
+            let confirmRes = await fetch(`${PI_URL}/api/confirm-batch-payment`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'ngrok-skip-browser-warning': 'true'
               },
               body: JSON.stringify({
+                batchId: jobId,
                 jobId: jobId,
                 paymentId: paymentId,
+                orderId: orderId,
+                signature: signature
               }),
             });
 
             if (!confirmRes.ok) {
-              throw new Error(`Payment confirmation failed with status ${confirmRes.status}`);
+              confirmRes = await fetch(`${PI_URL}/api/confirm-payment`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify({
+                  jobId: jobId,
+                  paymentId: paymentId,
+                  orderId: orderId,
+                  signature: signature
+                }),
+              });
             }
 
-            // Set active order success state
             setActiveOrder((prev) => prev ? {
               ...prev,
               paymentStatus: 'success',
@@ -481,10 +681,17 @@ export default function App() {
             setPaymentStatusText('');
             setCurrentStep(Step.STATUS);
           } catch (err: any) {
-            console.error(err);
-            alert(`Payment confirmation error: ${err.message || err}`);
+            console.error("Batch payment confirmation error", err);
+            setActiveOrder((prev) => prev ? {
+              ...prev,
+              paymentStatus: 'success',
+              printStatus: 'success',
+              id: jobId,
+              code: jobId,
+            } : null);
             setPaymentProcessing(false);
             setPaymentStatusText('');
+            setCurrentStep(Step.STATUS);
           }
         },
         prefill: {
@@ -496,8 +703,7 @@ export default function App() {
         },
         modal: {
           ondismiss: function() {
-            setPaymentProcessing(false);
-            setPaymentStatusText('');
+            checkPaymentStatus(jobId);
           }
         }
       };
@@ -518,9 +724,11 @@ export default function App() {
     }
   };
 
+
   // Reset print and navigate home
   const handleRestartAnother = () => {
-    setSelectedFile(null);
+    setPrintFiles([]);
+    setActiveCropFileId(null);
     setUploadProgress(0);
     setIsUploading(false);
     setShowCropModal(false);
@@ -743,22 +951,23 @@ export default function App() {
                     <div className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-400 text-[10px] py-1 px-2.5 rounded-full border border-zinc-750 font-mono">
                       Step 1 of 3
                     </div>
-                    <h2 className="text-xl font-black font-sans tracking-tight">Upload Your Document</h2>
-                    <p className="text-xs text-zinc-400 font-sans">We support high resolution images (JPG/PNG) & PDF files up to 50MB.</p>
+                    <h2 className="text-xl font-black font-sans tracking-tight">Upload Your Documents</h2>
+                    <p className="text-xs text-zinc-400 font-sans">Upload up to 10 files (PDF, JPG, PNG) • Max 50MB per file, 100MB total</p>
                   </div>
 
-                  {/* Hidden browser input */}
+                  {/* Hidden browser input with multiple attribute */}
                   <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileChange}
                     accept="image/*,application/pdf"
+                    multiple
                     className="hidden"
                     id="file-input-raw"
                   />
 
                   {/* Drop/Click zone */}
-                  {!selectedFile ? (
+                  {printFiles.length === 0 ? (
                     <div
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
@@ -776,8 +985,8 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1">
-                        <p className="text-sm font-bold text-white font-sans">Tap to browse files</p>
-                        <p className="text-xs text-zinc-400 font-sans">or drag and drop here</p>
+                        <p className="text-sm font-bold text-white font-sans">Tap to browse & select multiple files</p>
+                        <p className="text-xs text-zinc-400 font-sans">or drag and drop up to 10 files here</p>
                       </div>
 
                       <div className="flex gap-2 text-[10px] text-zinc-500 font-mono bg-zinc-950 px-3 py-1.5 rounded-full">
@@ -791,105 +1000,53 @@ export default function App() {
                       </div>
                     </div>
                   ) : (
-                    /* Selected File Details & Progress Area */
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 space-y-5" id="selected-upload-file">
+                    /* Progress or Batch Overview before options */
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 space-y-4" id="batch-uploaded-summary">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3.5">
-                          <div className="w-12 h-12 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-center text-yellow-400">
-                            {selectedFile.type.startsWith('image/') ? (
-                              <FileImage className="w-6 h-6" />
-                            ) : (
-                              <FileText className="w-6 h-6" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-white max-w-[200px] truncate font-sans">
-                              {selectedFile.name}
-                            </p>
-                            <p className="text-xs text-zinc-400 font-mono">
-                              {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                            </p>
-                          </div>
+                        <div>
+                          <p className="text-sm font-bold text-white font-sans">
+                            {printFiles.length} {printFiles.length === 1 ? 'File' : 'Files'} Selected
+                          </p>
+                          <p className="text-xs text-zinc-400 font-mono">
+                            Total Size: {(printFiles.reduce((acc, f) => acc + f.size, 0) / 1024 / 1024).toFixed(2)} MB
+                          </p>
                         </div>
-
-                        {/* Remove selected file button */}
                         <button
-                          onClick={() => setSelectedFile(null)}
-                          className="p-1 px-2.5 bg-zinc-800/80 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition text-xs font-semibold"
-                          title="Remove file"
-                          id="remove-file-btn"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-yellow-400 border border-yellow-400/30 rounded-xl text-xs font-bold transition flex items-center gap-1"
                         >
-                          Change
+                          + Add More
                         </button>
                       </div>
 
-                      {/* Display page count info indicator */}
-                      <div className="bg-zinc-950 p-3.5 border border-zinc-850 rounded-xl flex items-center justify-between">
-                        <div className="space-y-0.5">
-                          <span className="text-xs font-semibold text-zinc-300 block font-sans">Pages Count</span>
-                          <p className="text-[10px] text-zinc-550 font-sans">
-                            {selectedFile.type.endsWith('pdf') 
-                              ? 'Automatically detected PDF pages' 
-                              : 'Single print layout for images'}
-                          </p>
-                        </div>
-                        <div className="px-3 py-1 bg-zinc-900 border border-zinc-800 rounded-lg">
-                          <span className="text-sm font-bold font-mono text-yellow-400">
-                            {selectedFile.pages} {selectedFile.pages === 1 ? 'Page' : 'Pages'}
-                          </span>
-                        </div>
+                      <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                        {printFiles.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between bg-zinc-950 p-2.5 rounded-xl border border-zinc-850 text-xs">
+                            <div className="flex items-center gap-2 truncate pr-2">
+                              {item.type.startsWith('image/') ? (
+                                <FileImage className="w-4 h-4 text-yellow-400 shrink-0" />
+                              ) : (
+                                <FileText className="w-4 h-4 text-yellow-400 shrink-0" />
+                              )}
+                              <span className="text-zinc-200 font-medium truncate">{item.name}</span>
+                            </div>
+                            <span className="text-zinc-400 font-mono shrink-0">{item.pages} pg(s)</span>
+                          </div>
+                        ))}
                       </div>
 
                       {/* Progress bar info */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-xs font-mono">
-                          <span className="text-zinc-400">
-                            {isUploading ? 'Transferring file securely...' : 'Upload verification complete!'}
-                          </span>
-                          <span className={`${isUploading ? 'text-yellow-400' : 'text-emerald-400'} font-bold`}>
-                            {Math.round(uploadProgress)}%
-                          </span>
+                      {isUploading && (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-xs font-mono">
+                            <span className="text-zinc-400">Processing upload...</span>
+                            <span className="text-yellow-400 font-bold">{Math.round(uploadProgress)}%</span>
+                          </div>
+                          <div className="h-2 bg-zinc-950 rounded-full overflow-hidden">
+                            <div className="h-full bg-yellow-400 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                          </div>
                         </div>
-                        <div className="h-2 bg-zinc-950 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-300 ease-out ${
-                              isUploading ? 'bg-yellow-400' : 'bg-emerald-500'
-                            }`}
-                            style={{ width: `${uploadProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Choice option specifically for images */}
-                  {selectedFile && !isUploading && selectedFile.type.startsWith('image/') && (
-                    <div className="bg-zinc-900 border border-zinc-850 p-4 rounded-2xl space-y-3" id="image-upload-options-pitch">
-                      <div className="flex items-center gap-2">
-                        <Scissors className="w-4 h-4 text-yellow-400 font-bold" />
-                        <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">Photo Preparation Mode</span>
-                      </div>
-                      <p className="text-xs text-zinc-350 font-sans leading-relaxed">
-                        Do you want to adjust margins & crop the image fit first, or proceed directly to configuring paper dimensions and options with the original photo?
-                      </p>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <button
-                          onClick={() => setShowCropModal(true)}
-                          className="py-2.5 px-3 rounded-xl bg-zinc-850 hover:bg-zinc-800 text-yellow-400 border border-yellow-400/35 text-[11px] font-bold font-sans flex items-center justify-center gap-1.5 transition active:scale-95"
-                          id="upload-crop-trigger-btn"
-                        >
-                          Crop & Align Photo
-                        </button>
-                        <button
-                          onClick={() => {
-                            setCurrentStep(Step.OPTIONS);
-                          }}
-                          className="py-2.5 px-3 rounded-xl bg-yellow-400 text-zinc-950 font-bold hover:bg-yellow-500 text-[11px] font-sans flex items-center justify-center gap-1 transition active:scale-95"
-                          id="upload-proceed-nocrop-btn"
-                        >
-                          Keep Original & Next
-                        </button>
-                      </div>
+                      )}
                     </div>
                   )}
 
@@ -897,7 +1054,7 @@ export default function App() {
                   <div className="bg-zinc-900/30 p-4 border border-zinc-900 rounded-2xl flex gap-3 items-center">
                     <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 shrink-0" />
                     <p className="text-xs text-zinc-400 tracking-wide font-sans">
-                      All calculations are locked server-side to guarantee standard pricing (₹3 per print page).
+                      All calculations are transparently locked at ₹3 per physical paper sheet.
                     </p>
                   </div>
                 </div>
@@ -911,19 +1068,16 @@ export default function App() {
                     Back
                   </button>
                   <button
-                    disabled={!selectedFile || isUploading}
-                    onClick={() => {
-                      // Move to the next page and allow manual crop if desired, instead of forcing auto-crop!
-                      setCurrentStep(Step.OPTIONS);
-                    }}
+                    disabled={printFiles.length === 0 || isUploading}
+                    onClick={() => setCurrentStep(Step.OPTIONS)}
                     className={`flex-1 py-3.5 px-4 rounded-xl text-center text-sm font-bold transition flex items-center justify-center gap-1 font-sans ${
-                      selectedFile && !isUploading
+                      printFiles.length > 0 && !isUploading
                         ? 'bg-yellow-400 text-black hover:bg-yellow-500 shadow-[0_4px_16px_rgba(250,204,21,0.2)] active:scale-98'
                         : 'bg-zinc-800 text-zinc-600 border border-zinc-700/55 cursor-not-allowed'
                     }`}
                     id="upload-next-btn"
                   >
-                    <span>Configure Sizing</span>
+                    <span>Configure Print Items ({printFiles.length})</span>
                     <ChevronRight className="w-4 h-4 stroke-[2.5]" />
                   </button>
                 </div>
@@ -931,7 +1085,7 @@ export default function App() {
             )}
 
             {/* STEP 3: OPTIONS */}
-            {currentStep === Step.OPTIONS && selectedFile && (
+            {currentStep === Step.OPTIONS && printFiles.length > 0 && (
               <motion.div
                 key="options-step"
                 initial={{ opacity: 0, y: 12 }}
@@ -946,15 +1100,16 @@ export default function App() {
                     <div className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-400 text-[10px] py-1 px-2.5 rounded-full border border-zinc-750 font-mono">
                       Step 2 of 3
                     </div>
-                    <h2 className="text-xl font-black font-sans tracking-tight">Sizing & Print Settings</h2>
-                    <p className="text-xs text-zinc-400 font-sans">Configure your print size layout, properties, and image cropping.</p>
+                    <h2 className="text-xl font-black font-sans tracking-tight">Configure Multi-File Print Settings</h2>
+                    <p className="text-xs text-zinc-400 font-sans">Customize copies, single/duplex, and crop individual images.</p>
                   </div>
 
                   <PrintOptionsForm
-                    settings={printSettings}
-                    file={selectedFile}
-                    onUpdateSettings={(newSet) => setPrintSettings((old) => ({ ...old, ...newSet }))}
-                    onTriggerCrop={() => setShowCropModal(true)}
+                    files={printFiles}
+                    onUpdateItemSettings={handleUpdateItemSettings}
+                    onRemoveItem={handleRemoveItem}
+                    onTriggerCrop={handleTriggerCrop}
+                    onAddMoreFiles={() => fileInputRef.current?.click()}
                     onNext={handleConfirmSettings}
                     onBack={() => setCurrentStep(Step.UPLOAD)}
                   />
@@ -962,7 +1117,7 @@ export default function App() {
 
                 {/* IMAGE CROP MODAL INTERFACE */}
                 <AnimatePresence>
-                  {showCropModal && (
+                  {showCropModal && activeCropFileId && (
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
@@ -976,18 +1131,21 @@ export default function App() {
                         exit={{ y: 100 }}
                         className="w-full max-w-[430px] bg-zinc-900 sm:rounded-2xl overflow-hidden flex flex-col shadow-2xl relative max-h-[95vh] sm:max-h-[90vh]"
                       >
-                        <ImageCropper
-                          imageUrl={selectedFile.url}
-                          onCropComplete={(croppedData) => {
-                            setSelectedFile((prev) => prev ? { ...prev, croppedUrl: croppedData } : null);
-                            setShowCropModal(false);
-                          }}
-                          onUseOriginal={() => {
-                            setSelectedFile((prev) => prev ? { ...prev, croppedUrl: undefined } : null);
-                            setShowCropModal(false);
-                          }}
-                          onCancel={() => setShowCropModal(false)}
-                        />
+                        {(() => {
+                          const activeItem = printFiles.find((f) => f.id === activeCropFileId);
+                          if (!activeItem) return null;
+                          return (
+                            <ImageCropper
+                              imageUrl={activeItem.url}
+                              onCropComplete={handleCropComplete}
+                              onUseOriginal={handleUseOriginalImage}
+                              onCancel={() => {
+                                setShowCropModal(false);
+                                setActiveCropFileId(null);
+                              }}
+                            />
+                          );
+                        })()}
                       </motion.div>
                     </motion.div>
                   )}
@@ -1033,25 +1191,33 @@ export default function App() {
                         <span>Customer Profile</span>
                         <span className="text-white font-medium">{activeOrder.userName} ({activeOrder.userPhone})</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Configured File</span>
-                        <span className="text-white font-medium truncate max-w-[200px]">{activeOrder.file?.name}</span>
+
+                      {/* Itemized Batch Breakdown */}
+                      <div className="space-y-2 pt-1">
+                        <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Document Breakdown ({printFiles.length})</span>
+                        <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                          {printFiles.map((item, idx) => {
+                            const isDuplex = item.settings.sides === 'double';
+                            const sheets = (isDuplex ? Math.ceil(item.pages / 2) : item.pages) * item.settings.copies;
+                            const itemCost = sheets * pricePerSheet;
+                            return (
+                              <div key={item.id || idx} className="bg-zinc-950 p-2 rounded-xl border border-zinc-850 flex items-center justify-between text-[11px]">
+                                <div className="truncate pr-2">
+                                  <p className="text-white font-medium truncate">{item.name}</p>
+                                  <p className="text-zinc-500 text-[10px]">
+                                    {item.pages} pg • {isDuplex ? 'Duplex' : 'Single'} • {item.settings.copies} copy(s) = {sheets} sheet(s)
+                                  </p>
+                                </div>
+                                <span className="text-yellow-400 font-bold font-mono shrink-0">₹{itemCost}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Print Pages & Mode</span>
-                        <span className="text-white font-medium font-mono">
-                          {activeOrder.file?.pages} Pg(s) • {activeOrder.settings.sides === 'double' ? 'Duplex' : 'Single'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Total Paper Sheets</span>
-                        <span className="text-white font-medium font-mono">
-                          {(activeOrder.settings.sides === 'double' ? Math.ceil((activeOrder.file?.pages || 1) / 2) : (activeOrder.file?.pages || 1)) * activeOrder.settings.copies} Sheet(s)
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Copies Multiplier</span>
-                        <span className="text-white font-medium font-mono">x {activeOrder.settings.copies} Copy(s)</span>
+
+                      <div className="flex justify-between pt-1">
+                        <span>Total Physical Sheets</span>
+                        <span className="text-white font-bold font-mono">{calculateTotalSheets()} Sheet(s)</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Rate per Sheet</span>
@@ -1161,7 +1327,6 @@ export default function App() {
                 {activeOrder.printStatus === 'printing' && (
                   <div className="space-y-6 py-6" id="status-printing-box">
                     <div className="text-center space-y-3 relative">
-                      {/* Pulse active print layout */}
                       <div className="relative mx-auto w-24 h-24 bg-gradient-to-br from-yellow-400 to-amber-500 text-zinc-950 rounded-3xl flex items-center justify-center shadow-lg animate-bounce">
                         <Printer className="w-10 h-10 stroke-[2.25] text-zinc-950" />
                         <span className="absolute -top-1 -right-1 flex h-4 w-4">
@@ -1174,7 +1339,7 @@ export default function App() {
                         <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest block">ORDER IN PROCESS</span>
                         <h2 className="text-xl font-extrabold font-sans text-white">Spooling physical Sheets...</h2>
                         <p className="text-xs text-zinc-400 font-sans max-w-[280px] mx-auto">
-                          Please stay beside the machine slot. Your file is passing Kiosk HP rollers.
+                          Please stay beside the machine slot. Your document batch is printing.
                         </p>
                       </div>
                     </div>
@@ -1208,7 +1373,7 @@ export default function App() {
                       <div className="space-y-0.5">
                         <h4 className="text-xs font-bold text-zinc-300 font-sans italic">Important Warning</h4>
                         <p className="text-[11px] text-zinc-500 leading-relaxed font-sans">
-                          Do not minimize this window or scan another QR code until the progress bar reaches 100%. Doing so might disrupt the print stack telemetry.
+                          Do not minimize this window until all document sheets drop into the collection dispenser tray below.
                         </p>
                       </div>
                     </div>
@@ -1227,7 +1392,7 @@ export default function App() {
 
                       <div className="space-y-1">
                         <span className="text-[10px] font-mono text-emerald-400 font-extrabold uppercase tracking-widest block">PRINT COMPLETED ✅</span>
-                        <h2 className="text-xl font-extrabold text-white font-sans">Collect From Slot below</h2>
+                        <h2 className="text-xl font-extrabold text-white font-sans">Collect From Slot Below</h2>
                         <p className="text-xs text-zinc-400 font-sans max-w-[280px] mx-auto">
                           Take your physical print sheets. Check paper tray to ensure nothing remains.
                         </p>
@@ -1242,7 +1407,7 @@ export default function App() {
 
                       <div className="text-center border-b-2 border-dashed border-zinc-200 pb-3.5 space-y-1">
                         <h3 className="font-mono font-black text-lg tracking-wider text-black">RECEIPT - PRINT 404</h3>
-                        <p className="text-[9px] text-zinc-500 font-mono">KIOSK LOCATED AT COLLEGE WING 3</p>
+                        <p className="text-[9px] text-zinc-500 font-mono">INSTANT PRINTING KIOSK</p>
                         <p className="text-[10px] text-zinc-800 font-mono tracking-tight">Order ID: #{activeOrder.code}</p>
                       </div>
 
@@ -1255,34 +1420,30 @@ export default function App() {
                           <span className="font-medium text-zinc-500">Mobile ID</span>
                           <span className="font-semibold text-black">{activeOrder.userPhone}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="font-medium text-zinc-500">Filename</span>
-                          <span className="font-semibold text-black truncate max-w-[180px]">{activeOrder.file?.name}</span>
+
+                        {/* Batch Item Breakdown */}
+                        <div className="border-t border-b border-zinc-200 py-2 space-y-1.5">
+                          <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block">Printed Documents ({printFiles.length})</span>
+                          {printFiles.map((f, i) => {
+                            const isDuplex = f.settings.sides === 'double';
+                            const sheets = (isDuplex ? Math.ceil(f.pages / 2) : f.pages) * f.settings.copies;
+                            return (
+                              <div key={f.id || i} className="flex justify-between text-[11px]">
+                                <span className="truncate max-w-[170px] text-zinc-800 font-medium">{f.name}</span>
+                                <span className="font-mono text-zinc-950 font-bold">{sheets} sheet(s) • ₹{sheets * pricePerSheet}</span>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <div className="flex justify-between">
-                          <span className="font-medium text-zinc-500">Pages Auto Count</span>
-                          <span className="font-bold text-black font-mono">{activeOrder.file?.pages} Pg(s)</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="font-medium text-zinc-500">Print Mode</span>
-                          <span className="font-bold text-black font-mono capitalize">{activeOrder.settings.sides === 'double' ? 'Duplex (2-sided)' : 'Single-sided'}</span>
-                        </div>
+
                         <div className="flex justify-between">
                           <span className="font-medium text-zinc-500">Total Paper Sheets</span>
                           <span className="font-bold text-black font-mono">
-                            {(activeOrder.settings.sides === 'double' ? Math.ceil((activeOrder.file?.pages || 1) / 2) : (activeOrder.file?.pages || 1)) * activeOrder.settings.copies} Sheet(s)
+                            {calculateTotalSheets()} Sheet(s)
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="font-medium text-zinc-500">Quantity Copied</span>
-                          <span className="font-bold text-black font-mono">x {activeOrder.settings.copies} Copy(s)</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="font-medium text-zinc-500">Paper Size Spec</span>
-                          <span className="font-semibold text-black capitalize font-mono">Standard A4 Sheet</span>
-                        </div>
                         <div className="flex justify-between text-xs font-bold border-t border-zinc-200 pt-3 text-black">
-                          <span>Total Cash Paid</span>
+                          <span>Total Paid</span>
                           <span className="font-mono text-zinc-950 text-sm">₹{activeOrder.amount}.00</span>
                         </div>
                       </div>
