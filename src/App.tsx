@@ -127,8 +127,8 @@ export default function App() {
       const isDuplex = item.settings.sides === 'double';
       const pages = Math.max(1, parseInt(String(item.pages || 1), 10));
       const copies = Math.max(1, parseInt(String(item.settings.copies || 1), 10));
-      const sheetsPerCopy = isDuplex ? Math.ceil(pages / 2) : pages;
-      const totalSheets = sheetsPerCopy * copies;
+      const totalPagesToPrint = pages * copies;
+      const totalSheets = isDuplex ? Math.ceil(totalPagesToPrint / 2) : totalPagesToPrint;
       return sum + (totalSheets * pricePerSheet);
     }, 0);
   };
@@ -138,8 +138,9 @@ export default function App() {
       const isDuplex = item.settings.sides === 'double';
       const pages = Math.max(1, parseInt(String(item.pages || 1), 10));
       const copies = Math.max(1, parseInt(String(item.settings.copies || 1), 10));
-      const sheetsPerCopy = isDuplex ? Math.ceil(pages / 2) : pages;
-      return sum + (sheetsPerCopy * copies);
+      const totalPagesToPrint = pages * copies;
+      const totalSheets = isDuplex ? Math.ceil(totalPagesToPrint / 2) : totalPagesToPrint;
+      return sum + totalSheets;
     }, 0);
   };
 
@@ -1502,7 +1503,10 @@ export default function App() {
                         <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
                           {printFiles.map((item, idx) => {
                             const isDuplex = item.settings.sides === 'double';
-                            const sheets = (isDuplex ? Math.ceil(item.pages / 2) : item.pages) * item.settings.copies;
+                            const pages = Math.max(1, parseInt(String(item.pages || 1), 10));
+                            const copies = Math.max(1, parseInt(String(item.settings.copies || 1), 10));
+                            const totalPagesToPrint = pages * copies;
+                            const sheets = isDuplex ? Math.ceil(totalPagesToPrint / 2) : totalPagesToPrint;
                             const itemCost = sheets * pricePerSheet;
                             return (
                               <div key={item.id || idx} className="bg-zinc-950 p-2 rounded-xl border border-zinc-850 flex items-center justify-between text-[11px]">
@@ -1742,7 +1746,10 @@ export default function App() {
                           <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block">Printed Documents ({printFiles.length})</span>
                           {printFiles.map((f, i) => {
                             const isDuplex = f.settings.sides === 'double';
-                            const sheets = (isDuplex ? Math.ceil(f.pages / 2) : f.pages) * f.settings.copies;
+                            const pages = Math.max(1, parseInt(String(f.pages || 1), 10));
+                            const copies = Math.max(1, parseInt(String(f.settings.copies || 1), 10));
+                            const totalPagesToPrint = pages * copies;
+                            const sheets = isDuplex ? Math.ceil(totalPagesToPrint / 2) : totalPagesToPrint;
                             return (
                               <div key={f.id || i} className="flex justify-between text-[11px]">
                                 <span className="truncate max-w-[170px] text-zinc-800 font-medium">{f.name}</span>

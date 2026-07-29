@@ -29,10 +29,10 @@ export default function PrintOptionsForm({
     const isDuplex = item.settings.sides === 'double';
     const pages = Math.max(1, parseInt(String(item.pages || 1), 10));
     const copies = Math.max(1, parseInt(String(item.settings.copies || 1), 10));
-    const sheetsPerCopy = isDuplex ? Math.ceil(pages / 2) : pages;
-    const totalSheets = sheetsPerCopy * copies;
+    const totalPagesToPrint = pages * copies;
+    const totalSheets = isDuplex ? Math.ceil(totalPagesToPrint / 2) : totalPagesToPrint;
     const cost = totalSheets * pricePerSheet;
-    return { isImage, isDuplex, pages, copies, sheetsPerCopy, totalSheets, cost };
+    return { isImage, isDuplex, pages, copies, totalPagesToPrint, totalSheets, cost };
   };
 
   // Aggregated totals
@@ -70,7 +70,7 @@ export default function PrintOptionsForm({
       {/* Individual File Cards List */}
       <div className="space-y-4 max-h-[58vh] overflow-y-auto pr-1">
         {files.map((item, index) => {
-          const { isImage, isDuplex, pages, copies, sheetsPerCopy, totalSheets, cost } = getItemDetails(item);
+          const { isImage, isDuplex, pages, copies, totalPagesToPrint, totalSheets, cost } = getItemDetails(item);
           const previewUrl = item.croppedUrl || item.url;
 
           return (
@@ -190,7 +190,7 @@ export default function PrintOptionsForm({
               {/* Card bottom row: Individual sheet calculation & cost */}
               <div className="flex justify-between items-center text-xs pt-0.5 px-1 font-sans">
                 <span className="text-zinc-400 font-mono text-[11px]">
-                  {totalSheets} {totalSheets === 1 ? 'Sheet' : 'Sheets'} ({sheetsPerCopy} sheet/copy)
+                  {totalSheets} {totalSheets === 1 ? 'Sheet' : 'Sheets'} ({totalPagesToPrint} {totalPagesToPrint === 1 ? 'pg' : 'pgs'} total)
                 </span>
                 <span className="font-bold text-yellow-400 font-mono text-sm">
                   Cost: ₹{cost}
