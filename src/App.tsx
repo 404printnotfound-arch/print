@@ -621,6 +621,48 @@ export default function App() {
     }
   };
 
+  // Helper to send job cancellation to Raspberry Pi backend
+  const cancelJobOnServer = async (jobId?: string | null) => {
+    const targetId = jobId || currentJobIdRef.current || activeOrder?.id;
+    if (!targetId) return;
+    try {
+      console.log('Cancelling job on Pi:', targetId);
+      await fetch(`${PI_URL}/api/cancel-job`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({ jobId: targetId, batchId: targetId })
+      });
+    } catch (e) {
+      console.error('Cancel failed:', e);
+    }
+  };
+
+  // Handle explicit user cancellation via button or action
+  const handleUserClickCancel = async () => {
+    console.log('Payment cancelled by user');
+    if (rzpInstanceRef.current) {
+      try {
+        rzpInstanceRef.current.close();
+      } catch (e) {
+        console.warn('Error closing Razorpay instance:', e);
+      }
+    }
+    const targetJobId = currentJobIdRef.current || activeOrder?.id;
+    if (targetJobId) {
+      await cancelJobOnServer(targetJobId);
+    }
+    setTimeoutNotice('Payment cancelled. Redirecting...');
+    setPaymentStatusText('Payment cancelled. Redirecting...');
+    setPaymentProcessing(false);
+
+    setTimeout(() => {
+      handleRestartAnother();
+    }, 2000);
+  };
+
   // Handle Timer Timeout (120 seconds reached)
   const handleTimeout = async () => {
     setIsTimerExpired(true);
@@ -891,15 +933,24 @@ export default function App() {
           color: '#FACC15',
         },
         modal: {
-          ondismiss: function() {
-            if (userWentToUPI.current) {
-              setPaymentStatusText('Payment in progress. If successful, print will happen automatically.');
-            } else {
-              setPaymentStatusText('Payment cancelled.');
+          ondismiss: async function() {
+            console.log('Payment cancelled by user');
+            
+            // Cancel job on Pi
+            try {
+              await cancelJobOnServer(jobId);
+            } catch (e) {
+              console.error('Cancel failed:', e);
             }
-            if (!isTimerExpired) {
-              checkPaymentStatus(jobId);
-            }
+
+            // Show message and redirect
+            setTimeoutNotice('Payment cancelled. Redirecting...');
+            setPaymentStatusText('Payment cancelled. Redirecting...');
+            setPaymentProcessing(false);
+
+            setTimeout(() => {
+              handleRestartAnother();
+            }, 2000);
           }
         }
       };
@@ -914,12 +965,20 @@ export default function App() {
         }
       });
 
-      rzp.on('payment.failed', function (response: any) {
-        if (!isTimerExpired) {
-          alert(`Payment failed: ${response.error?.description || 'Payment declined'}`);
-          setPaymentProcessing(false);
-          setPaymentStatusText('');
+      rzp.on('payment.failed', async function (response: any) {
+        console.log('Payment failed:', response);
+        try {
+          await cancelJobOnServer(jobId);
+        } catch (e) {
+          console.error('Cancel failed:', e);
         }
+        setTimeoutNotice('Payment failed. Please try again.');
+        setPaymentStatusText('Payment failed. Please try again.');
+        setPaymentProcessing(false);
+
+        setTimeout(() => {
+          handleRestartAnother();
+        }, 3000);
       });
 
       rzp.open();
@@ -1526,10 +1585,11 @@ export default function App() {
 
                   <div className="flex gap-3">
                     <button
-                      onClick={() => setCurrentStep(Step.OPTIONS)}
+                      onClick={handleUserClickCancel}
                       className="flex-1 py-3.5 px-4 rounded-xl text-center text-sm font-semibold bg-zinc-800 hover:bg-zinc-750 text-zinc-300 border border-zinc-700 transition active:scale-98 font-sans"
+                      id="cancel-payment-btn"
                     >
-                      Back
+                      Cancel
                     </button>
                     <motion.button
                       initial={{ opacity: 0 }}
