@@ -218,6 +218,7 @@ export default function App() {
     if (e.target.files && e.target.files.length > 0) {
       processSelectedFiles(e.target.files);
     }
+    e.target.value = '';
   };
 
   // Helper to count PDF pages client-side using native binary stream parsing
@@ -1077,6 +1078,17 @@ export default function App() {
 
         {/* Primary Screen Area with elegant animations */}
         <main className="flex-1 p-4 relative flex flex-col justify-between">
+          {/* Hidden browser input with multiple attribute */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*,application/pdf"
+            multiple
+            className="hidden"
+            id="file-input-raw"
+          />
+
           <AnimatePresence mode="wait">
             
             {/* STEP 1: LANDING */}
@@ -1227,17 +1239,6 @@ export default function App() {
                     <h2 className="text-xl font-black font-sans tracking-tight">Upload Your Documents</h2>
                     <p className="text-xs text-zinc-400 font-sans">Upload up to 10 files (PDF, JPG, PNG) • Max 50MB per file, 100MB total</p>
                   </div>
-
-                  {/* Hidden browser input with multiple attribute */}
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="image/*,application/pdf"
-                    multiple
-                    className="hidden"
-                    id="file-input-raw"
-                  />
 
                   {/* Drop/Click zone */}
                   {printFiles.length === 0 ? (
