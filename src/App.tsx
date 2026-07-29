@@ -24,12 +24,10 @@ import {
   Receipt, 
   Download,
   Info,
-  Scissors,
   Clock
 } from 'lucide-react';
 import StatusIndicator from './components/StatusIndicator';
 import PrintOptionsForm from './components/PrintOptionsForm';
-import ImageCropper from './components/ImageCropper';
 import Confetti from './components/Confetti';
 
 // ==========================================
@@ -74,13 +72,9 @@ export default function App() {
 
   // File management states
   const [printFiles, setPrintFiles] = useState<PrintItem[]>([]);
-  const [activeCropFileId, setActiveCropFileId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState<boolean>(false);
-  
-  // Cropper helper
-  const [showCropModal, setShowCropModal] = useState<boolean>(false);
 
   // Default print properties fallback
   const [printSettings, setPrintSettings] = useState<PrintSettings>({
@@ -197,21 +191,6 @@ export default function App() {
   useEffect(() => {
     if (userPhone) localStorage.setItem('p404_userPhone', userPhone);
   }, [userPhone]);
-
-  // Prevent background scroll when the Crop modal overlay is active
-  useEffect(() => {
-    if (showCropModal) {
-      document.body.style.overflow = 'hidden';
-      document.body.style.touchAction = 'none';
-    } else {
-      document.body.style.overflow = '';
-      document.body.style.touchAction = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-      document.body.style.touchAction = '';
-    };
-  }, [showCropModal]);
 
   // Handle file input selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -398,52 +377,6 @@ export default function App() {
       }
       return filtered;
     });
-  };
-
-  // Trigger crop modal for a specific image file
-  const handleTriggerCrop = (id: string) => {
-    setActiveCropFileId(id);
-    setShowCropModal(true);
-  };
-
-  // Crop completion callback
-  const handleCropComplete = (croppedDataUrl: string) => {
-    if (!activeCropFileId) return;
-    try {
-      const croppedBlob = dataURLtoBlob(croppedDataUrl);
-      setPrintFiles((prev) =>
-        prev.map((f) =>
-          f.id === activeCropFileId
-            ? { ...f, croppedUrl: croppedDataUrl, croppedBlob: croppedBlob, isCropped: true }
-            : f
-        )
-      );
-    } catch (err) {
-      console.error("Failed to convert cropped data url to blob", err);
-      setPrintFiles((prev) =>
-        prev.map((f) =>
-          f.id === activeCropFileId
-            ? { ...f, croppedUrl: croppedDataUrl, isCropped: true }
-            : f
-        )
-      );
-    }
-    setShowCropModal(false);
-    setActiveCropFileId(null);
-  };
-
-  // Use original uncropped image callback
-  const handleUseOriginalImage = () => {
-    if (!activeCropFileId) return;
-    setPrintFiles((prev) =>
-      prev.map((f) =>
-        f.id === activeCropFileId
-          ? { ...f, croppedUrl: undefined, croppedBlob: undefined, isCropped: false }
-          : f
-      )
-    );
-    setShowCropModal(false);
-    setActiveCropFileId(null);
   };
 
   // Validate landing form
@@ -783,15 +716,14 @@ export default function App() {
         copies: item.settings.copies,
         sides: item.settings.sides === 'double' ? 'two-sided-long-edge' : 'one-sided',
         pages: item.pages,
-        name: item.name
+        name: item.name,
+        fitMode: 'fit',
+        fitToPage: true,
       }));
       formData.append('settings', JSON.stringify(settingsArray));
 
       uniqueFiles.forEach((item) => {
-        const fileObj = item.croppedBlob 
-          ? new File([item.croppedBlob], item.name, { type: item.type || 'image/jpeg' }) 
-          : item.file;
-        formData.append('files', fileObj);
+        formData.append('files', item.file);
       });
 
       setPaymentStatusText('Uploading document batch...');
@@ -997,10 +929,8 @@ export default function App() {
   // Reset print and navigate home
   const handleRestartAnother = () => {
     setPrintFiles([]);
-    setActiveCropFileId(null);
     setUploadProgress(0);
     setIsUploading(false);
-    setShowCropModal(false);
     setActiveOrder(null);
     setCurrentStep(Step.LANDING);
     setPrintProgress(0);
@@ -1062,7 +992,7 @@ export default function App() {
               <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${
                 currentStep === Step.OPTIONS ? 'bg-yellow-400 text-black' : 'bg-zinc-800 text-zinc-400'
               }`}>2</span>
-              <span className={`font-sans font-medium ${currentStep === Step.OPTIONS ? 'text-white' : 'text-zinc-500'}`}>Crop & Options</span>
+              <span className={`font-sans font-medium ${currentStep === Step.OPTIONS ? 'text-white' : 'text-zinc-500'}`}>Print Options</span>
             </div>
 
             <ChevronRight className="w-4 h-4 text-zinc-700" />
@@ -1375,55 +1305,18 @@ export default function App() {
                       Step 2 of 3
                     </div>
                     <h2 className="text-xl font-black font-sans tracking-tight">Configure Multi-File Print Settings</h2>
-                    <p className="text-xs text-zinc-400 font-sans">Customize copies, single/duplex, and crop individual images.</p>
+                    <p className="text-xs text-zinc-400 font-sans">Customize copies and single/duplex print settings (fitted to A4 paper).</p>
                   </div>
 
                   <PrintOptionsForm
                     files={printFiles}
                     onUpdateItemSettings={handleUpdateItemSettings}
                     onRemoveItem={handleRemoveItem}
-                    onTriggerCrop={handleTriggerCrop}
                     onAddMoreFiles={() => fileInputRef.current?.click()}
                     onNext={handleConfirmSettings}
                     onBack={() => setCurrentStep(Step.UPLOAD)}
                   />
                 </div>
-
-                {/* IMAGE CROP MODAL INTERFACE */}
-                <AnimatePresence>
-                  {showCropModal && activeCropFileId && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="fixed inset-0 bg-black/92 z-50 flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4"
-                      id="crop-modal-overlay"
-                    >
-                      <motion.div
-                        initial={{ y: 100 }}
-                        animate={{ y: 0 }}
-                        exit={{ y: 100 }}
-                        className="w-full max-w-[430px] bg-zinc-900 sm:rounded-2xl overflow-hidden flex flex-col shadow-2xl relative max-h-[95vh] sm:max-h-[90vh]"
-                      >
-                        {(() => {
-                          const activeItem = printFiles.find((f) => f.id === activeCropFileId);
-                          if (!activeItem) return null;
-                          return (
-                            <ImageCropper
-                              imageUrl={activeItem.url}
-                              onCropComplete={handleCropComplete}
-                              onUseOriginal={handleUseOriginalImage}
-                              onCancel={() => {
-                                setShowCropModal(false);
-                                setActiveCropFileId(null);
-                              }}
-                            />
-                          );
-                        })()}
-                      </motion.div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </motion.div>
             )}
 

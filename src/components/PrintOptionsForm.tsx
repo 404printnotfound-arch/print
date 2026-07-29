@@ -1,12 +1,11 @@
 import React from 'react';
 import { PrintSettings, PrintItem } from '../types';
-import { Layers, Copy, FileText, Sliders, Scissors, Trash2, Plus, FileImage, CheckCircle, Upload } from 'lucide-react';
+import { Layers, Copy, FileText, Sliders, Trash2, Plus, FileImage, CheckCircle, Upload } from 'lucide-react';
 
 interface PrintOptionsFormProps {
   files: PrintItem[];
   onUpdateItemSettings: (id: string, settings: Partial<PrintSettings>) => void;
   onRemoveItem: (id: string) => void;
-  onTriggerCrop: (id: string) => void;
   onAddMoreFiles: () => void;
   onNext: () => void;
   onBack: () => void;
@@ -16,7 +15,6 @@ export default function PrintOptionsForm({
   files,
   onUpdateItemSettings,
   onRemoveItem,
-  onTriggerCrop,
   onAddMoreFiles,
   onNext,
   onBack,
@@ -78,21 +76,16 @@ export default function PrintOptionsForm({
               key={item.id || index}
               className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3 shadow-md relative"
             >
-              {/* Card top row: File info & Crop/Remove buttons */}
+              {/* Card top row: File info & Remove button */}
               <div className="flex gap-3 items-start justify-between">
                 <div className="flex gap-3 items-center min-w-0 flex-1">
                   {/* Thumbnail / Icon */}
                   <div 
-                    className="w-14 h-16 bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden flex items-center justify-center shrink-0 relative bg-cover bg-center shadow-inner"
+                    className="w-14 h-16 bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden flex items-center justify-center shrink-0 relative bg-contain bg-no-repeat bg-center shadow-inner p-0.5"
                     style={{ backgroundImage: isImage ? `url(${previewUrl})` : undefined }}
                   >
                     {!isImage && (
                       <FileText className="w-7 h-7 text-yellow-400" />
-                    )}
-                    {item.isCropped && (
-                      <div className="absolute top-0 right-0 bg-yellow-400 text-black text-[8px] font-black px-1 py-0.5 rounded-bl uppercase tracking-tight">
-                        ✓
-                      </div>
                     )}
                   </div>
 
@@ -106,27 +99,15 @@ export default function PrintOptionsForm({
                       <span className="bg-zinc-950 border border-zinc-800 px-2 py-0.5 rounded text-zinc-300 font-mono">
                         {pages} {pages === 1 ? 'page' : 'pages'}
                       </span>
-                      {item.isCropped && (
-                        <span className="bg-yellow-400/10 text-yellow-400 border border-yellow-400/30 px-2 py-0.5 rounded font-bold font-sans flex items-center gap-1 text-[10px]">
-                          <CheckCircle className="w-3 h-3" /> Cropped
-                        </span>
-                      )}
+                      <span className="bg-zinc-950 border border-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-mono text-[10px]">
+                        Fits A4 Paper
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Actions: Crop (Images only) & Remove */}
+                {/* Action: Remove */}
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {isImage && (
-                    <button
-                      onClick={() => onTriggerCrop(item.id)}
-                      className="py-1.5 px-2.5 bg-yellow-400 hover:bg-yellow-500 text-black rounded-lg transition active:scale-95 flex items-center gap-1 text-xs font-bold font-sans shadow-sm"
-                      title={item.isCropped ? 'Re-Crop Image' : 'Crop Image'}
-                    >
-                      <Scissors className="w-3.5 h-3.5 stroke-[2.5]" />
-                      <span>{item.isCropped ? 'Re-Crop' : 'Crop'}</span>
-                    </button>
-                  )}
                   <button
                     onClick={() => onRemoveItem(item.id)}
                     className="p-1.5 bg-zinc-800 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 border border-zinc-750 hover:border-rose-900 rounded-lg transition active:scale-90"
