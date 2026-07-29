@@ -24,7 +24,8 @@ import {
   Receipt, 
   Download,
   Info,
-  Scissors
+  Scissors,
+  Clock
 } from 'lucide-react';
 import StatusIndicator from './components/StatusIndicator';
 import PrintOptionsForm from './components/PrintOptionsForm';
@@ -98,6 +99,17 @@ export default function App() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'upi' | 'card' | 'wallet'>('upi');
   const [paymentProcessing, setPaymentProcessing] = useState<boolean>(false);
   const [paymentStatusText, setPaymentStatusText] = useState<string>('');
+
+  // 2-Minute Payment Timeout & Receipt Timer States
+  const [paymentTimerSeconds, setPaymentTimerSeconds] = useState<number>(120);
+  const [isTimerExpired, setIsTimerExpired] = useState<boolean>(false);
+  const [timeoutNotice, setTimeoutNotice] = useState<string | null>(null);
+  const [receiptTimerSeconds, setReceiptTimerSeconds] = useState<number>(15);
+
+  const userWentToUPI = useRef<boolean>(false);
+  const paymentStartTime = useRef<number>(0);
+  const rzpInstanceRef = useRef<any>(null);
+  const currentJobIdRef = useRef<string | null>(null);
   
   // Printing simulation state
   const [printProgress, setPrintProgress] = useState<number>(0);
@@ -525,6 +537,173 @@ export default function App() {
     }
   };
 
+  // Helper to format time display
+  const formatTimerDisplay = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  // Helper for countdown visual styles (Green -> Yellow -> Red -> Flash -> Expired)
+  const getTimerUI = (seconds: number) => {
+    if (seconds <= 0) {
+      return {
+        bgClass: 'bg-red-950/80 border-red-800 text-red-400',
+        badgeClass: 'bg-red-500 text-white',
+        statusText: 'Session ended',
+        iconColor: 'text-red-400',
+        isFlashing: false,
+      };
+    }
+    if (seconds <= 10) {
+      return {
+        bgClass: 'bg-red-950/60 border-red-750 text-red-400',
+        badgeClass: 'bg-red-500/30 text-red-300 border border-red-500/50',
+        statusText: 'Payment expiring!',
+        iconColor: 'text-red-400',
+        isFlashing: seconds <= 5,
+      };
+    }
+    if (seconds <= 30) {
+      return {
+        bgClass: 'bg-yellow-950/50 border-yellow-750 text-yellow-400',
+        badgeClass: 'bg-yellow-500/30 text-yellow-300 border border-yellow-500/50',
+        statusText: 'Hurry up!',
+        iconColor: 'text-yellow-400',
+        isFlashing: false,
+      };
+    }
+    return {
+      bgClass: 'bg-emerald-950/40 border-emerald-800/60 text-emerald-400',
+      badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
+      statusText: 'Normal',
+      iconColor: 'text-emerald-400',
+      isFlashing: false,
+    };
+  };
+
+  // Web Audio chime for success
+  const playSuccessChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const playNote = (freq: number, start: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime + start);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + duration);
+      };
+      playNote(523.25, 0, 0.18);
+      playNote(659.25, 0.15, 0.18);
+      playNote(783.99, 0.3, 0.35);
+    } catch (e) {
+      console.warn("Audio chime error:", e);
+    }
+  };
+
+  // Handle Timer Timeout (120 seconds reached)
+  const handleTimeout = async () => {
+    setIsTimerExpired(true);
+
+    if (rzpInstanceRef.current) {
+      try {
+        rzpInstanceRef.current.close();
+      } catch (e) {
+        console.warn("Could not close Razorpay instance", e);
+      }
+    }
+
+    const jobId = currentJobIdRef.current || activeOrder?.id;
+
+    if (userWentToUPI.current) {
+      // SCENARIO B - User already opened UPI app
+      setTimeoutNotice('⏰ Time expired! If you completed payment, print will happen automatically. Otherwise, please start over.');
+      setTimeout(() => {
+        handleRestartAnother();
+      }, 5000);
+    } else {
+      // SCENARIO A - User still on payment page (before UPI)
+      setTimeoutNotice('⏰ Payment Time Expired!\nYour session has ended. Please try again.');
+
+      if (jobId) {
+        try {
+          await fetch(`${PI_URL}/api/cancel-job`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true'
+            },
+            body: JSON.stringify({ jobId, batchId: jobId })
+          });
+        } catch (err) {
+          console.error("Cancel job API error", err);
+        }
+      }
+
+      setTimeout(() => {
+        handleRestartAnother();
+      }, 3000);
+    }
+  };
+
+  // 2-minute Payment Timer countdown effect
+  useEffect(() => {
+    let timer: any;
+    if (currentStep === Step.PAYMENT) {
+      setPaymentTimerSeconds(120);
+      setIsTimerExpired(false);
+      userWentToUPI.current = false;
+      paymentStartTime.current = Date.now();
+      setTimeoutNotice(null);
+
+      timer = setInterval(() => {
+        const timeElapsed = Date.now() - paymentStartTime.current;
+        const remaining = Math.max(0, 120 - Math.floor(timeElapsed / 1000));
+        setPaymentTimerSeconds(remaining);
+
+        if (timeElapsed >= 120000) {
+          clearInterval(timer);
+          handleTimeout();
+        }
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [currentStep]);
+
+  // Receipt auto-redirect 15-second timer effect
+  useEffect(() => {
+    let timer: any;
+    if (currentStep === Step.STATUS && activeOrder?.printStatus === 'success') {
+      playSuccessChime();
+      setReceiptTimerSeconds(15);
+
+      timer = setInterval(() => {
+        setReceiptTimerSeconds((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            handleRestartAnother();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      setReceiptTimerSeconds(15);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [currentStep, activeOrder?.printStatus]);
+
   // Real Payment and Multi-File API Upload processing
   const handleInitiatePayment = async () => {
     if (!activeOrder || printFiles.length === 0) return;
@@ -590,6 +769,8 @@ export default function App() {
       if (!jobId || amount === undefined) {
         throw new Error("Invalid response from server: missing jobId or amount.");
       }
+
+      currentJobIdRef.current = jobId;
 
       setPaymentStatusText('Creating Razorpay order...');
 
@@ -703,17 +884,36 @@ export default function App() {
         },
         modal: {
           ondismiss: function() {
-            checkPaymentStatus(jobId);
+            if (userWentToUPI.current) {
+              setPaymentStatusText('Payment in progress. If successful, print will happen automatically.');
+            } else {
+              setPaymentStatusText('Payment cancelled.');
+            }
+            if (!isTimerExpired) {
+              checkPaymentStatus(jobId);
+            }
           }
         }
       };
 
       const rzp = new (window as any).Razorpay(options);
-      rzp.on('payment.failed', function (response: any) {
-        alert(`Payment failed: ${response.error.description}`);
-        setPaymentProcessing(false);
-        setPaymentStatusText('');
+      rzpInstanceRef.current = rzp;
+
+      // Detect UPI submission / selection
+      rzp.on('payment.submit', function (data: any) {
+        if (data && (data.method === 'upi' || data.type === 'upi' || data.method === 'card' || data.method === 'netbanking')) {
+          userWentToUPI.current = true;
+        }
       });
+
+      rzp.on('payment.failed', function (response: any) {
+        if (!isTimerExpired) {
+          alert(`Payment failed: ${response.error?.description || 'Payment declined'}`);
+          setPaymentProcessing(false);
+          setPaymentStatusText('');
+        }
+      });
+
       rzp.open();
 
     } catch (err: any) {
@@ -735,6 +935,11 @@ export default function App() {
     setActiveOrder(null);
     setCurrentStep(Step.LANDING);
     setPrintProgress(0);
+    setTimeoutNotice(null);
+    setIsTimerExpired(false);
+    userWentToUPI.current = false;
+    currentJobIdRef.current = null;
+    rzpInstanceRef.current = null;
   };
 
   // Trigger browser simulation print receipt
@@ -835,7 +1040,7 @@ export default function App() {
                     </div>
                     
                     <h2 className="text-xl font-bold font-sans tracking-tight leading-tight">
-                      Scan, Upload & Print <span className="text-yellow-400">in 45 seconds</span>
+                      Scan, Upload & Print
                     </h2>
                     
                     <p className="text-xs text-zinc-400 leading-relaxed font-sans">
@@ -1173,6 +1378,38 @@ export default function App() {
                     <p className="text-xs text-zinc-400 font-sans">Payment verification occurs server-side in real-time.</p>
                   </div>
 
+                  {/* PROMINENT VISIBLE PAYMENT COUNTDOWN TIMER */}
+                  {(() => {
+                    const timerUI = getTimerUI(paymentTimerSeconds);
+                    return (
+                      <div className={`p-3.5 rounded-2xl border flex items-center justify-between transition-all duration-300 ${timerUI.bgClass} ${timerUI.isFlashing ? 'animate-pulse ring-2 ring-red-500' : ''}`} id="payment-countdown-timer-banner">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`p-2 rounded-xl bg-zinc-950/60 ${timerUI.iconColor}`}>
+                            <Clock className="w-5 h-5 animate-spin-slow" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-200">
+                                Payment expires in
+                              </span>
+                              <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-sans font-bold ${timerUI.badgeClass}`}>
+                                {timerUI.statusText}
+                              </span>
+                            </div>
+                            <p className="text-xs text-zinc-300 font-sans mt-0.5">
+                              ⏱️ Time remaining: <span className="font-mono font-extrabold text-sm text-white">{formatTimerDisplay(paymentTimerSeconds)}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right pl-2">
+                          <span className="text-xl font-black font-mono tracking-wider">
+                            {formatTimerDisplay(paymentTimerSeconds)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Bill Outline Receipt */}
                   <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 space-y-4 shadow-lg text-white" id="billing-summary-card">
                     <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
@@ -1399,6 +1636,17 @@ export default function App() {
                       </div>
                     </div>
 
+                    {/* Receipt Auto-Redirect 15s Timer Banner */}
+                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-2xl flex items-center justify-between text-xs" id="receipt-autoredirect-banner">
+                      <div className="flex items-center gap-2 text-zinc-300">
+                        <Clock className="w-4 h-4 text-yellow-400 animate-pulse" />
+                        <span className="font-sans">Auto returning to home in</span>
+                      </div>
+                      <span className="font-mono font-bold text-yellow-400 bg-zinc-950 px-2.5 py-1 rounded-lg border border-zinc-800">
+                        {receiptTimerSeconds}s
+                      </span>
+                    </div>
+
                     {/* Digital Receipt Card details print-friendly */}
                     <div className="bg-white text-black p-5 rounded-3xl space-y-4 shadow-xl border border-zinc-150 relative overflow-hidden" id="print-recipient-receipt">
                       <div className="absolute top-0 right-0 transform translate-x-3 -translate-y-3 opacity-5">
@@ -1529,6 +1777,38 @@ export default function App() {
 
           </AnimatePresence>
         </main>
+
+        {/* TIMEOUT NOTIFICATION OVERLAY MODAL */}
+        <AnimatePresence>
+          {timeoutNotice && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
+              id="timeout-notice-overlay"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 10 }}
+                className="bg-zinc-900 border border-zinc-750 p-6 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl"
+              >
+                <div className="w-14 h-14 bg-red-500/20 text-red-400 rounded-2xl flex items-center justify-center mx-auto border border-red-500/30 shadow-lg">
+                  <Clock className="w-8 h-8 animate-bounce" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-black text-white font-sans">Payment Time Expired!</h3>
+                  <p className="text-xs text-zinc-300 leading-relaxed font-sans whitespace-pre-line">{timeoutNotice}</p>
+                </div>
+                <div className="pt-2 text-[11px] font-mono text-zinc-500 flex items-center justify-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-yellow-400" />
+                  <span>Redirecting to home screen...</span>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </div>
