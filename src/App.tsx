@@ -723,12 +723,11 @@ export default function App() {
       }));
       formData.append('settings', JSON.stringify(settingsArray));
 
-      printFiles.forEach((item, index) => {
+      printFiles.forEach((item) => {
         const fileObj = item.croppedBlob 
           ? new File([item.croppedBlob], item.name, { type: item.type || 'image/jpeg' }) 
           : item.file;
         formData.append('files', fileObj);
-        formData.append(`file_${index}`, fileObj);
       });
 
       // Backward compatibility fields for single-file API
