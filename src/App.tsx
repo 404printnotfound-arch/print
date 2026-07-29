@@ -282,9 +282,17 @@ export default function App() {
     }
 
     const maxSingleSize = 50 * 1024 * 1024; // 50MB
+    // Filter out duplicates based on filename and size
+    const existingKeys = new Set(printFiles.map((f) => `${f.name}_${f.size}`));
     const validFiles: File[] = [];
 
     for (const f of filesArray) {
+      const key = `${f.name}_${f.size}`;
+      if (existingKeys.has(key)) {
+        continue; // Skip duplicate file
+      }
+      existingKeys.add(key);
+
       const ext = f.name.toLowerCase();
       const isPdf = ext.endsWith('.pdf') || f.type === 'application/pdf';
       const isImg = f.type.startsWith('image/') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png');
@@ -339,7 +347,12 @@ export default function App() {
       newPrintItems.push(item);
     }
 
-    setPrintFiles((prev) => [...prev, ...newPrintItems]);
+    setPrintFiles((prev) => {
+      const updated = [...prev, ...newPrintItems];
+      console.log('Files count:', updated.length);
+      console.log('Files:', updated.map((f) => f.name));
+      return updated;
+    });
     setIsUploading(false);
 
     if (currentStep === Step.UPLOAD) {
@@ -715,7 +728,14 @@ export default function App() {
       const formData = new FormData();
       formData.append('name', userName || userPhone || 'Customer');
 
-      const settingsArray = printFiles.map((item) => ({
+      // Deduplicate files by filename before appending to FormData
+      const uniqueFiles = Array.from(new Set(printFiles.map((f) => f.name)))
+        .map((name) => printFiles.find((f) => f.name === name)!);
+
+      console.log('Files count:', uniqueFiles.length);
+      console.log('Files:', uniqueFiles.map((f) => f.name));
+
+      const settingsArray = uniqueFiles.map((item) => ({
         copies: item.settings.copies,
         sides: item.settings.sides === 'double' ? 'two-sided-long-edge' : 'one-sided',
         pages: item.pages,
@@ -723,22 +743,12 @@ export default function App() {
       }));
       formData.append('settings', JSON.stringify(settingsArray));
 
-      printFiles.forEach((item) => {
+      uniqueFiles.forEach((item) => {
         const fileObj = item.croppedBlob 
           ? new File([item.croppedBlob], item.name, { type: item.type || 'image/jpeg' }) 
           : item.file;
         formData.append('files', fileObj);
       });
-
-      // Backward compatibility fields for single-file API
-      const mainItem = printFiles[0];
-      const mainFile = mainItem.croppedBlob 
-        ? new File([mainItem.croppedBlob], mainItem.name, { type: mainItem.type || 'image/jpeg' }) 
-        : mainItem.file;
-      formData.append('file', mainFile);
-      formData.append('pages', mainItem.pages.toString());
-      formData.append('copies', mainItem.settings.copies.toString());
-      formData.append('sides', mainItem.settings.sides === 'double' ? 'two-sided-long-edge' : 'one-sided');
 
       setPaymentStatusText('Uploading document batch...');
 
