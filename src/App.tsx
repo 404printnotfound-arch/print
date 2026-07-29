@@ -723,13 +723,12 @@ export default function App() {
       }));
       formData.append('settings', JSON.stringify(settingsArray));
 
-      printFiles.forEach((item) => {
-        if (item.croppedBlob) {
-          const croppedFile = new File([item.croppedBlob], item.name, { type: item.type || 'image/jpeg' });
-          formData.append('files', croppedFile);
-        } else {
-          formData.append('files', item.file);
-        }
+      printFiles.forEach((item, index) => {
+        const fileObj = item.croppedBlob 
+          ? new File([item.croppedBlob], item.name, { type: item.type || 'image/jpeg' }) 
+          : item.file;
+        formData.append('files', fileObj);
+        formData.append(`file_${index}`, fileObj);
       });
 
       // Backward compatibility fields for single-file API
